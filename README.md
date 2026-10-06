@@ -91,5 +91,25 @@ npm run dev
 * `frontend/src/utils/`: Validadores y helpers de comunicación API para el cliente.
 * `frontend/src/context/`: Estado global de autenticación (`AuthContext`).
 
+## 🔁 Integración continua y gestión del trabajo
+
+**Flujo de trabajo:** issue → rama → Pull Request → CI → merge → Vercel.
+
+1. Cada tarea es un *issue* (plantillas en `.github/ISSUE_TEMPLATE`) con etiquetas y un hito (Hito 1 a 4).
+2. Se trabaja en una rama `feat/...` o `fix/...` y se abre un Pull Request (`Closes #n` en la descripción).
+3. **GitHub Actions** (`.github/workflows/ci.yml`) corre en cada PR y en cada push a `main`:
+   * *Frontend:* `npm ci` → ESLint → build de Vite → guarda `frontend/dist` como artefacto.
+   * *Backend:* levanta un PostgreSQL 17 descartable, aplica el esquema y siembra (`node seed.js`) y ejecuta `npm test` (reglas de negocio, RBAC, JWT, asistencia, finanzas).
+4. Al mergear, Vercel publica a producción y el issue se cierra solo.
+
+Las pruebas de API solo corren contra una base local (`localhost`); nunca contra Supabase. Para correrlas en tu máquina:
+
+```bash
+docker run -d --name pg-test -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:17
+cd backend
+export DATABASE_URL=postgresql://postgres:postgres@localhost:55432/postgres DATABASE_SSL=false JWT_SECRET=test
+node seed.js && npm test
+```
+
 ---
 © 2026 Educar para Transformar - Portillo & Bizjan.

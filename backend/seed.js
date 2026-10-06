@@ -149,11 +149,15 @@ async function seedDatosPrueba() {
 // sin disparar la siembra solo por importar el módulo.
 module.exports = seed;
 
-// Si se ejecuta directamente (`node seed.js`), sembrar.
-// Pequeño delay para que database.js termine de crear las tablas (la
-// inicialización del esquema es asíncrona y no se espera al hacer el require).
+// Si se ejecuta directamente (`node seed.js`), sembrar una vez que database.js
+// terminó de aplicar el esquema.
 if (require.main === module) {
-    setTimeout(() => {
-        seed().catch((err) => console.error('Error al sembrar:', err.message));
-    }, 1000);
+    db.ready
+        .then(seed)
+        .then(() => db.end())
+        .catch((err) => {
+            console.error('Error al sembrar:', err.message);
+            process.exitCode = 1;
+            return db.end();
+        });
 }
