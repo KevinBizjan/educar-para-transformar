@@ -12,9 +12,11 @@ types.setTypeParser(1082, (val) => val); // DATE -> 'YYYY-MM-DD' (string, no Dat
 types.setTypeParser(1700, (val) => parseFloat(val)); // NUMERIC/DECIMAL -> number
 types.setTypeParser(20, (val) => parseInt(val, 10)); // BIGINT (ej. COUNT(*)) -> number
 
+// Supabase exige SSL. DATABASE_SSL=false permite usar un PostgreSQL local o el
+// de la integración continua (que no tiene SSL).
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: process.env.DATABASE_SSL === 'false' ? false : { rejectUnauthorized: false }
 });
 
 pool.on('error', (err) => {
@@ -33,9 +35,13 @@ async function initializeDatabase() {
     }
 }
 
-initializeDatabase();
+// Promesa que se resuelve cuando el esquema ya está aplicado; permite que el
+// seed y las pruebas esperen en lugar de usar un retardo fijo.
+const ready = initializeDatabase();
 
 module.exports = {
     query: (text, params) => pool.query(text, params),
-    getClient: () => pool.connect()
+    getClient: () => pool.connect(),
+    ready,
+    end: () => pool.end()
 };
