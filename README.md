@@ -91,5 +91,26 @@ npm run dev
 * `frontend/src/utils/`: Validadores y helpers de comunicación API para el cliente.
 * `frontend/src/context/`: Estado global de autenticación (`AuthContext`).
 
+## 🧪 Pruebas automáticas
+
+El backend tiene 41 pruebas (`node:test`): validadores, patrones de diseño y la API completa
+(autenticación y JWT, RBAC, cupos, notas 1-10, asistencia, finanzas con PDF, servicios,
+comunicados, Mi Perfil y horarios sin superposición).
+
+Las pruebas de API corren **solo contra un PostgreSQL local** (si `DATABASE_URL` no apunta a
+`localhost` se saltean solas), para no escribir datos de prueba en Supabase.
+
+```bash
+docker run -d --name pg-test -e POSTGRES_PASSWORD=postgres -p 55432:5432 postgres:17
+cd backend
+export DATABASE_URL=postgresql://postgres:postgres@localhost:55432/postgres DATABASE_SSL=false JWT_SECRET=test
+node seed.js && npm test
+```
+
+## 🚀 Despliegue
+
+Un solo servicio: Express sirve la API y el frontend compilado. Pasos, variables de entorno
+y verificación en [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md).
+
 ---
 © 2026 Educar para Transformar - Portillo & Bizjan.
