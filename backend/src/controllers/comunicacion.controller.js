@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { comunicados } = require('../patterns/comunicadosObserver');
 
 // --- NOTIFICACIONES ---
 exports.getNotificaciones = async (req, res) => {
@@ -33,7 +34,10 @@ exports.crearNotificacion = async (req, res) => {
             'INSERT INTO notificaciones (titulo, mensaje, rol_destino) VALUES ($1, $2, $3) RETURNING id',
             [titulo, mensaje, rol_destino]
         );
-        res.status(201).json({ id: result.rows[0].id });
+        const id = result.rows[0].id;
+        // Patrón Observer: se avisa a quien esté suscripto (ver src/patterns/comunicadosObserver.js).
+        comunicados.notificar({ id, titulo, mensaje, rol_destino });
+        res.status(201).json({ id });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }

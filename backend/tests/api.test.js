@@ -197,6 +197,11 @@ describe('API Educar para Transformar', { skip }, () => {
             }
         });
 
+        it('HU6: el comprobante de un pago inexistente devuelve 404', async () => {
+            const r = await api('GET', '/api/financiero/comprobante/2147483000', { token: tokens.admin });
+            assert.equal(r.status, 404);
+        });
+
         it('HU6: rechaza un pago de importe cero', async () => {
             const r = await api('POST', '/api/financiero/pagos', { token: tokens.admin, body: { alumno_id: 1, monto_pagado: 0 } });
             assert.equal(r.status, 400);
@@ -250,6 +255,24 @@ describe('API Educar para Transformar', { skip }, () => {
                 token: tokens.admin, body: { titulo: 'Aviso', mensaje: 'Mensaje', rol_destino: 'director' }
             });
             assert.equal(destinoInvalido.status, 400);
+        });
+
+        it('Observer: al publicar se avisa a los observadores suscriptos', async () => {
+            const { comunicados } = require('../src/patterns/comunicadosObserver');
+            const eventos = [];
+            const baja = comunicados.suscribir(e => eventos.push(e));
+            try {
+                const titulo = 'Aviso observado ' + Date.now();
+                const r = await api('POST', '/api/comunicacion/notificaciones', {
+                    token: tokens.admin, body: { titulo, mensaje: 'Texto', rol_destino: 'docente' }
+                });
+                assert.equal(r.status, 201);
+                assert.equal(eventos.length, 1);
+                assert.equal(eventos[0].titulo, titulo);
+                assert.equal(eventos[0].rol_destino, 'docente');
+            } finally {
+                baja();
+            }
         });
 
         it('el comunicado lo ve solo el público elegido', async () => {
