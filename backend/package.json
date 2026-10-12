@@ -7,7 +7,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "seed": "node seed.js",
-    "test": "node --test tests/validators.test.js tests/api.test.js"
+    "test": "node --test tests/validators.test.js tests/patrones.test.js tests/api.test.js"
   },
   "keywords": [],
   "author": "",

@@ -4,6 +4,7 @@ const db = require('../config/database');
 require('dotenv').config();
 
 const { NOMBRE_REGEX, esNombreValido, esEmailValido, validarPassword } = require('../utils/validators');
+const RolFactory = require('../patterns/rolFactory');
 
 const ES_VIOLACION_UNIQUE = (err) => err.code === '23505';
 
@@ -34,10 +35,11 @@ exports.registroFamiliar = async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // El rol siempre es "padre": no se toma del cliente.
+    const rolPadre = RolFactory.crear('padre');
     try {
         const result = await db.query(
-            `INSERT INTO users (username, password, nombre, rol) VALUES ($1, $2, $3, 'padre') RETURNING id`,
-            [email, hashedPassword, nombre]
+            `INSERT INTO users (username, password, nombre, rol) VALUES ($1, $2, $3, $4) RETURNING id`,
+            [email, hashedPassword, nombre, rolPadre.nombre]
         );
         res.status(201).json({ message: 'Cuenta creada con éxito', userId: result.rows[0].id });
     } catch (err) {
@@ -111,8 +113,6 @@ exports.getPadres = async (req, res) => {
 };
 
 // --- GESTIÓN DE USUARIOS Y ROLES (solo admin) ---
-const ROLES_VALIDOS = ['admin', 'docente', 'alumno', 'padre'];
-
 exports.getUsers = async (req, res) => {
     try {
         const result = await db.query('SELECT id, username, nombre, rol, created_at FROM users ORDER BY rol, nombre');
@@ -135,7 +135,7 @@ exports.createUser = async (req, res) => {
     if (!NOMBRE_REGEX.test(nombre)) {
         return res.status(400).json({ message: 'El nombre solo puede contener letras (sin números ni símbolos)' });
     }
-    if (!ROLES_VALIDOS.includes(rol)) {
+    if (!RolFactory.esValido(rol)) {
         return res.status(400).json({ message: 'Rol inválido' });
     }
     const pwError = validarPassword(password);
@@ -162,7 +162,7 @@ exports.createUser = async (req, res) => {
 exports.updateUserRol = async (req, res) => {
     const { id } = req.params;
     const rol = (req.body.rol || '').trim();
-    if (!ROLES_VALIDOS.includes(rol)) {
+    if (!RolFactory.esValido(rol)) {
         return res.status(400).json({ message: 'Rol inválido' });
     }
     // Evita que el admin se quite a sí mismo el rol de admin y quede sin acceso.
