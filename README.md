@@ -110,7 +110,7 @@ node seed.js && npm test
 ## 🚀 Despliegue
 
 Un solo servicio: Express sirve la API y el frontend compilado. Pasos, variables de entorno
-y verificación en [DEPLOY_RAILWAY.md](DEPLOY_RAILWAY.md).
+y verificación en [DEPLOY.md](DEPLOY.md).
 
 ---
 © 2026 Educar para Transformar - Portillo & Bizjan.

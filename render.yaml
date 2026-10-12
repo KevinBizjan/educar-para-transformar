@@ -1,0 +1,30 @@
+# Blueprint de Render: crea el servicio web con un clic ("New > Blueprint").
+# Guía completa y verificación en DEPLOY.md.
+services:
+  - type: web
+    name: educar-para-transformar
+    runtime: node
+    plan: free
+    # Virginia es la región de Render más cercana a Sudamérica (Supabase está en São Paulo).
+    region: virginia
+    # La raíz del repo: el build compila el frontend y el backend lo sirve (un solo servicio).
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      # Se fija la versión: el "engines" del package.json no tiene tope y Render
+      # tomaría siempre la última.
+      - key: NODE_VERSION
+        value: 22.22.0
+      # Cadena del Transaction pooler de Supabase (puerto 6543). Render la pide al
+      # crear el servicio; no se guarda en el repositorio.
+      - key: DATABASE_URL
+        sync: false
+      # Render genera un valor aleatorio seguro la primera vez.
+      - key: JWT_SECRET
+        generateValue: true
+      # Render lo pregunta al crear el servicio: "true" para cargar los datos demo en el
+      # primer arranque; después cambiarlo a "false" en el panel. Va con sync: false para
+      # que una nueva sincronización del Blueprint no lo vuelva a pisar.
+      - key: SEED_ON_BOOT
+        sync: false

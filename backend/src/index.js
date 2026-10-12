@@ -11,7 +11,7 @@ if (!process.env.JWT_SECRET) {
 
 // Siembra opcional al arrancar (idempotente: usa ON CONFLICT DO NOTHING y chequeos).
 // Se activa con SEED_ON_BOOT=true. Crea usuarios demo con contraseñas conocidas
-// (ver DEPLOY_RAILWAY.md): fuera de una demo conviene dejarla en false.
+// (ver DEPLOY.md): fuera de una demo conviene dejarla en false.
 if (process.env.SEED_ON_BOOT === 'true') {
     const seed = require('../seed');
     // Espera a que database.js termine de verificar el esquema antes de sembrar.
