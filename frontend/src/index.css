@@ -26,6 +26,8 @@ body {
   overflow-x: hidden; 
   line-height: 1.6;
 }
+/* Los controles de formulario no heredan la fuente por defecto (se verían en Arial). */
+button, input, select, textarea { font-family: inherit; }
 a { text-decoration: none; color: inherit; }
 img { display: block; width: 100%; object-fit: cover; }
 ul { list-style: none; }
@@ -36,7 +38,7 @@ ul { list-style: none; }
 .container { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
 .section { padding: 80px 0; }
 .section-title {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Nunito', sans-serif;
   font-size: clamp(2rem, 4vw, 2.6rem);
   color: var(--blue);
   margin-bottom: 12px;
@@ -143,14 +145,14 @@ html { scroll-behavior: smooth; }
   line-height: 1.15;
 }
 .logo-text .title {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Nunito', sans-serif;
   font-size: 1.2rem;
   font-weight: 900;
   color: var(--blue);
   letter-spacing: 0.5px;
 }
 .logo-text .subtitle {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Nunito', sans-serif;
   font-size: 0.72rem;
   font-weight: 800;
   color: var(--green);
@@ -215,7 +217,7 @@ html { scroll-behavior: smooth; }
   color: #ffffff;
   padding: 8px 18px;
   border-radius: 9999px;
-  font-family: 'Playfair Display', serif;
+  font-family: 'Nunito', sans-serif;
   font-size: 0.96rem;
   font-weight: 700;
   letter-spacing: 0.4px;
@@ -444,7 +446,7 @@ html { scroll-behavior: smooth; }
 .hero-badge span { width: 8px; height: 8px; background: var(--green); border-radius: 50%; animation: pulse 1.8s infinite; }
 @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:.5; transform:scale(1.4); } }
 .hero h1 {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Nunito', sans-serif;
   font-size: clamp(2.2rem, 5vw, 3.6rem);
   font-weight: 900;
   color: #fff;
@@ -691,7 +693,7 @@ html { scroll-behavior: smooth; }
   background: url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M0 0h40v40H0zM40 40h40v40H40z'/%3E%3C/g%3E%3C/svg%3E");
 }
 .cta-banner h2 { 
-  font-family: 'Playfair Display', serif;
+  font-family: 'Nunito', sans-serif;
   font-size: clamp(1.8rem, 4vw, 2.8rem); 
   color: #fff; 
   margin-bottom: 12px; 

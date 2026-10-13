@@ -109,7 +109,7 @@ const Noticias = () => {
               style={{ width: '100%', height: '220px', objectFit: 'cover', borderRadius: '12px', marginBottom: '20px' }}
             />
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px' }}>
-              <h2 style={{ color: 'var(--blue)', fontFamily: 'Playfair Display, serif', margin: 0 }}>{noticiaActiva.titulo}</h2>
+              <h2 style={{ color: 'var(--blue)', fontFamily: 'Nunito, sans-serif', margin: 0 }}>{noticiaActiva.titulo}</h2>
               <button onClick={() => setNoticiaActiva(null)} style={closeBtn}>✕</button>
             </div>
             <p style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, marginTop: '6px' }}>

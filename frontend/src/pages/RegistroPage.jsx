@@ -118,7 +118,7 @@ const RegistroPage = () => {
                         margin: '0 auto 16px'
                     }}>👨‍👩‍👧</div>
                     <h2 style={{
-                        fontFamily: 'Playfair Display, serif',
+                        fontFamily: 'Nunito, sans-serif',
                         color: 'var(--blue)',
                         fontSize: '2.2rem',
                         marginBottom: '8px'

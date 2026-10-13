@@ -61,7 +61,7 @@ const DashboardLayout = ({ title, children }) => {
                         <img src="/img/logo.png" alt="Logo" style={{ height: '35px', display: 'block' }} />
                     </div>
                     <div>
-                        <h1 style={{ fontFamily: 'Playfair Display, serif', fontSize: '1.3rem', color: 'white', margin: 0, letterSpacing: '0.02em' }}>{title}</h1>
+                        <h1 style={{ fontFamily: 'Nunito, sans-serif', fontSize: '1.3rem', color: 'white', margin: 0, letterSpacing: '0.02em' }}>{title}</h1>
                         <p style={{ fontSize: '0.65rem', margin: 0, fontWeight: 700, textTransform: 'uppercase', opacity: 0.8 }}>Gestión Institucional</p>
                     </div>
                 </div>
