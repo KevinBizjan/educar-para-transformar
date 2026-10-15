@@ -91,6 +91,19 @@ npm run dev
 * `frontend/src/utils/`: Validadores y helpers de comunicación API para el cliente.
 * `frontend/src/context/`: Estado global de autenticación (`AuthContext`).
 
+## 🔁 Integración continua y flujo de trabajo
+
+**Flujo:** issue → rama → Pull Request (con `Closes #n`) → GitHub Actions → merge a `main` → Render despliega a producción.
+
+1. Cada tarea es un *issue* (plantillas en `.github/ISSUE_TEMPLATE`) y se sigue en el tablero Kanban del repositorio (Projects).
+2. Se trabaja en una rama `feat/...` o `fix/...` y se abre un Pull Request. La plantilla pide el issue relacionado.
+3. **GitHub Actions** (`.github/workflows/ci.yml`) corre en cada PR y en cada push a `main`:
+   * *Frontend:* `npm ci` → ESLint → build de Vite → guarda `frontend/dist` como artefacto (7 días).
+   * *Backend:* levanta un PostgreSQL descartable, aplica el esquema, siembra (`node seed.js`) y corre `npm test`.
+4. Si la CI está en rojo, el PR no debería mergearse. Al mergear, Render redeploya solo (ver [DEPLOY.md](DEPLOY.md)).
+
+La CI no usa secretos: la base y la clave JWT se generan al azar en cada ejecución y nunca se toca Supabase.
+
 ## 🧪 Pruebas automáticas
 
 El backend tiene 41 pruebas (`node:test`): validadores, patrones de diseño y la API completa
