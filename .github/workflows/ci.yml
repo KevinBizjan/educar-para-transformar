@@ -1,0 +1,85 @@
+name: CI
+
+# Integración continua: se ejecuta en cada Pull Request y en cada push a main.
+# Si algo falla, el check queda en rojo en el PR antes de mergear.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Si se sube un commit nuevo a la misma rama, cancela la ejecución anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend (lint y build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Lint (ESLint)
+        run: npm run lint
+      - name: Build (Vite)
+        run: npm run build
+      # Gestión de artefactos: el build queda guardado y descargable desde la ejecución.
+      - name: Guardar el build como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  backend:
+    name: Backend (pruebas contra PostgreSQL)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # Base descartable: contraseña y clave JWT aleatorias en cada ejecución.
+      # Nunca se toca la base de Supabase y no hay secretos escritos en el repositorio.
+      - name: Levantar PostgreSQL de prueba
+        working-directory: .
+        run: |
+          DB_PASS="$(openssl rand -hex 16)"
+          echo "::add-mask::$DB_PASS"
+          docker run -d --name pg-ci -e POSTGRES_PASSWORD="$DB_PASS" -p 5432:5432 postgres:17
+          for i in $(seq 1 30); do
+            docker exec pg-ci pg_isready -U postgres && break
+            sleep 2
+          done
+          JWT="$(openssl rand -hex 24)"
+          echo "::add-mask::$JWT"
+          {
+            echo "DATABASE_URL=postgresql://postgres:${DB_PASS}@localhost:5432/postgres"
+            echo "DATABASE_SSL=false"
+            echo "JWT_SECRET=${JWT}"
+          } >> "$GITHUB_ENV"
+
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Cargar datos de prueba (aplica el esquema y siembra)
+        run: node seed.js
+      - name: Pruebas automáticas
+        run: npm test

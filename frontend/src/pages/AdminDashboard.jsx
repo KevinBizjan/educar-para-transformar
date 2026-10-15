@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ConfirmModal from '../components/ConfirmModal';
 
-import { NOMBRE_REGEX, esNombreValido } from '../utils/validators';
+import { esNombreValido } from '../utils/validators';
 
 const AdminDashboard = () => {
     const [activeTab, setActiveTab] = useState('preinscripciones');
