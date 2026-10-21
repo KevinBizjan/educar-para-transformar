@@ -30,7 +30,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Instalar dependencias
-        run: npm ci
+        run: npm ci --no-audit --no-fund
       - name: Lint (ESLint)
         run: npm run lint
       - name: Build (Vite)
@@ -58,17 +58,20 @@ jobs:
           cache-dependency-path: backend/package-lock.json
 
       # Base descartable: contraseña y clave JWT aleatorias en cada ejecución.
+      # Se usa el PostgreSQL que ya trae instalado el runner (no hay que descargar una imagen
+      # de Docker, que era el paso más lento del pipeline: 9 a 17 s).
       # Nunca se toca la base de Supabase y no hay secretos escritos en el repositorio.
-      - name: Levantar PostgreSQL de prueba
+      - name: Iniciar PostgreSQL de prueba (preinstalado en el runner)
         working-directory: .
         run: |
           DB_PASS="$(openssl rand -hex 16)"
           echo "::add-mask::$DB_PASS"
-          docker run -d --name pg-ci -e POSTGRES_PASSWORD="$DB_PASS" -p 5432:5432 postgres:17
+          sudo systemctl start postgresql.service
           for i in $(seq 1 30); do
-            docker exec pg-ci pg_isready -U postgres && break
-            sleep 2
+            sudo -u postgres psql -qtAc 'select 1' >/dev/null 2>&1 && break
+            sleep 1
           done
+          sudo -u postgres psql -v ON_ERROR_STOP=1 -qc "ALTER USER postgres WITH PASSWORD '$DB_PASS'"
           JWT="$(openssl rand -hex 24)"
           echo "::add-mask::$JWT"
           {
@@ -78,7 +81,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Instalar dependencias
-        run: npm ci
+        run: npm ci --no-audit --no-fund
       - name: Cargar datos de prueba (aplica el esquema y siembra)
         run: node seed.js
       - name: Pruebas automáticas
