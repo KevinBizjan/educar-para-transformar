@@ -8,11 +8,14 @@ import LoginScreen from './src/screens/LoginScreen.js';
 import InicioScreen from './src/screens/InicioScreen.js';
 import CambiarPasswordScreen from './src/screens/CambiarPasswordScreen.js';
 import SinAccesoScreen from './src/screens/SinAccesoScreen.js';
+import MisHijosScreen from './src/screens/MisHijosScreen.js';
+import BarraInferior from './src/screens/BarraInferior.js';
 import { colores } from './src/screens/estilos.js';
 
 // Redirección según el estado de la sesión y el rol del usuario.
 function Raiz() {
   const { usuario, cargando } = useAuth();
+  const [seccion, setSeccion] = useState('hijos'); // 'hijos' | 'cuenta'
   const [verCambioPassword, setVerCambioPassword] = useState(false);
 
   if (cargando) {
@@ -26,7 +29,17 @@ function Raiz() {
 
   if (pantallaPorRol(usuario.rol) === 'sin-acceso') return <SinAccesoScreen />;
   if (verCambioPassword) return <CambiarPasswordScreen alVolver={() => setVerCambioPassword(false)} />;
-  return <InicioScreen alCambiarPassword={() => setVerCambioPassword(true)} />;
+
+  return (
+    <View style={{ flex: 1 }}>
+      <View style={{ flex: 1 }}>
+        {seccion === 'hijos'
+          ? <MisHijosScreen />
+          : <InicioScreen alCambiarPassword={() => setVerCambioPassword(true)} />}
+      </View>
+      <BarraInferior activa={seccion} alElegir={setSeccion} />
+    </View>
+  );
 }
 
 export default function App() {

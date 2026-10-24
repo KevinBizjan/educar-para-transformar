@@ -29,7 +29,7 @@ En el emulador de Android la computadora es `http://10.0.2.2:3000`. Después de 
 ## Comprobar sin celular
 
 ```bash
-npm test                   # 18 pruebas: cliente de la API, sesión y validaciones (sin red)
+npm test                   # 27 pruebas: cliente de la API, sesión, validaciones y "Mis hijos" (sin red)
 npm run verificar:conexion # llama al backend real: GET /api/health
 ```
 
@@ -39,7 +39,8 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 |---|---|
 | `App.js` | Raíz de la app: redirige según la sesión y el rol |
 | `src/auth/` | Sesión: login, renovación y cierre (`sesion.js`), contexto de React y almacenamiento seguro del token |
-| `src/screens/` | Pantallas: inicio de sesión, inicio del padre/tutor, cambio de contraseña y acceso no disponible |
+| `src/familia/` | Lógica de "Mis hijos": carga del resumen, caché en memoria, formato de montos y meses |
+| `src/screens/` | Pantallas: inicio de sesión, "Mis hijos", "Mi cuenta", cambio de contraseña y acceso no disponible |
 | `src/utils/validators.js` | Reglas de contraseña (las mismas del backend y la web) |
 | `src/config.js` | URL de la API y claves públicas de Supabase (variables `EXPO_PUBLIC_*`) |
 | `src/api/client.js` | Cliente de la API: token JWT, errores en español, tiempo de espera |
@@ -53,6 +54,13 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 - **Por rol:** los padres/tutores entran al inicio; administrador, docente y alumno ven un aviso para usar el portal web.
 - **Cambio de contraseña:** pide la actual y aplica las mismas reglas que el registro web.
 - **Pendiente:** la recuperación de contraseña por correo necesita el motor de correo (HU10).
+
+## Mis hijos (HU5)
+
+- Muestra **solo los hijos de la cuenta** que inició sesión, con su curso, el estado de cuenta (saldo pendiente o "Cuenta al día"), los **servicios inscriptos del mes** y el **consumo real del comedor** (los días que la escuela ya registró en la asistencia).
+- Se puede navegar entre meses con las flechas; cada mes muestra sus propios servicios.
+- **Una sola llamada** a la API (`GET /api/inscripciones/resumen-familia`) trae todo, sin importar cuántos hijos haya. Lo último que se vio queda en un caché en memoria: la pantalla lo muestra al instante y lo actualiza en segundo plano. Se puede actualizar a mano deslizando hacia abajo.
+- Al cerrar sesión (o si la sesión vence) el caché se borra: no quedan datos de la familia en memoria.
 
 ## Notas
 

@@ -5,6 +5,9 @@ const authMiddleware = require('../middlewares/auth.middleware');
 
 const familia = authMiddleware(['padre', 'admin']);
 
+// Pantalla "Mis hijos" de la app: hijos, servicios del mes, comedor y saldo (solo padres)
+router.get('/resumen-familia', authMiddleware(['padre']), controller.getResumenFamilia);
+
 // Catálogo del mes con cupos disponibles, e inscripciones de un hijo
 router.get('/catalogo', familia, controller.getCatalogo);
 router.get('/alumno/:alumno_id', familia, controller.getInscripcionesAlumno);

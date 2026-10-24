@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { crearSesion } from './sesion.js';
 import { almacenSeguro } from './almacen.js';
 import { alSesionExpirada } from '../api/client.js';
+import { limpiarCache } from '../familia/resumen.js';
 
 // Mientras la app está abierta, se renueva el token cada 10 min (el token dura 30). Si pasan
 // más de 30 min sin abrirla, el servidor lo rechaza y hay que iniciar sesión de nuevo.
@@ -23,6 +24,7 @@ export function AuthProvider({ children }) {
         let activo = true;
         alSesionExpirada(() => {
             sesionApi.cerrarSesion();
+            limpiarCache();
             setUsuario(null);
             setAviso('Tu sesión venció. Iniciá sesión nuevamente.');
         });
@@ -50,6 +52,7 @@ export function AuthProvider({ children }) {
 
     const cerrarSesion = useCallback(async () => {
         await sesionApi.cerrarSesion();
+        limpiarCache();
         setUsuario(null);
         setAviso('');
     }, []);
