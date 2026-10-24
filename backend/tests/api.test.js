@@ -340,4 +340,102 @@ describe('API Educar para Transformar', { skip }, () => {
             }
         });
     });
+
+    describe('Sesión móvil: refresco de token y cambio de contraseña (HU3)', () => {
+        const jwt = require('jsonwebtoken');
+        const decodificar = (token) => JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+        const firmar = (payload) => jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '30m' });
+        const ahora = () => Math.floor(Date.now() / 1000);
+        const PASS = 'Inicial1!x';
+        let temporal;
+
+        const entrar = (password) => api('POST', '/api/auth/login', { body: { username: temporal.username, password } });
+
+        before(async () => {
+            const username = `hu3-${Date.now()}`;
+            const r = await api('POST', '/api/auth/users', {
+                token: tokens.admin, body: { nombre: 'Familia Prueba', username, password: PASS, rol: 'padre' }
+            });
+            assert.equal(r.status, 201);
+            temporal = { id: r.data.id, username };
+        });
+
+        after(async () => {
+            if (temporal) await api('DELETE', `/api/auth/users/${temporal.id}`, { token: tokens.admin });
+        });
+
+        it('el refresco devuelve un token nuevo de 30 min, con el mismo usuario y el inicio de sesión original', async () => {
+            const viejo = (await entrar(PASS)).data.token;
+            const r = await api('POST', '/api/auth/refresh', { token: viejo });
+            assert.equal(r.status, 200);
+            assert.equal(r.data.user.id, temporal.id);
+            assert.equal(r.data.user.rol, 'padre');
+            const nuevo = decodificar(r.data.token);
+            assert.equal(nuevo.exp - nuevo.iat, 1800);
+            assert.equal(nuevo.auth_time, decodificar(viejo).auth_time);
+            const me = await api('GET', '/api/auth/me', { token: r.data.token });
+            assert.equal(me.status, 200);
+            assert.equal(me.data.username, temporal.username);
+        });
+
+        it('el refresco exige un token válido', async () => {
+            assert.equal((await api('POST', '/api/auth/refresh')).status, 403);
+            assert.equal((await api('POST', '/api/auth/refresh', { token: 'no.es.un.token' })).status, 401);
+            const vencido = jwt.sign({ id: temporal.id, rol: 'padre' }, process.env.JWT_SECRET, { expiresIn: -10 });
+            assert.equal((await api('POST', '/api/auth/refresh', { token: vencido })).status, 401);
+        });
+
+        it('una sesión de más de 12 horas no se puede seguir renovando', async () => {
+            const token = firmar({ id: temporal.id, username: temporal.username, rol: 'padre', auth_time: ahora() - 13 * 3600 });
+            const r = await api('POST', '/api/auth/refresh', { token });
+            assert.equal(r.status, 401);
+            assert.match(r.data.message, /duración máxima/);
+        });
+
+        it('no renueva el token de una cuenta que ya no existe', async () => {
+            const token = firmar({ id: 2147483000, username: 'fantasma', rol: 'padre', auth_time: ahora() });
+            const r = await api('POST', '/api/auth/refresh', { token });
+            assert.equal(r.status, 401);
+            assert.match(r.data.message, /ya no existe/);
+        });
+
+        it('el rol del token nuevo sale de la base, no del token anterior', async () => {
+            const token = firmar({ id: temporal.id, username: temporal.username, rol: 'admin', auth_time: ahora() });
+            const r = await api('POST', '/api/auth/refresh', { token });
+            assert.equal(r.status, 200);
+            assert.equal(r.data.user.rol, 'padre');
+            assert.equal(decodificar(r.data.token).rol, 'padre');
+        });
+
+        it('acepta tokens emitidos antes de esta versión (sin auth_time)', async () => {
+            const token = firmar({ id: temporal.id, username: temporal.username, rol: 'padre' });
+            assert.equal((await api('POST', '/api/auth/refresh', { token })).status, 200);
+        });
+
+        it('cambio de contraseña: valida los datos antes de tocar la base', async () => {
+            const token = (await entrar(PASS)).data.token;
+            const cambiar = (body, t = token) => api('POST', '/api/auth/change-password', { token: t, body });
+
+            assert.equal((await cambiar({ password_actual: PASS, password_nueva: 'Otra2$clave' }, null)).status, 403);
+            assert.equal((await cambiar({ password_actual: PASS })).status, 400);
+            assert.equal((await cambiar({ password_nueva: 'Otra2$clave' })).status, 400);
+            assert.equal((await cambiar({ password_actual: 'Incorrecta1!', password_nueva: 'Otra2$clave' })).status, 400);
+            const debil = await cambiar({ password_actual: PASS, password_nueva: 'abc' });
+            assert.equal(debil.status, 400);
+            assert.match(debil.data.message, /8 caracteres/);
+            const igual = await cambiar({ password_actual: PASS, password_nueva: PASS });
+            assert.equal(igual.status, 400);
+            assert.match(igual.data.message, /distinta/);
+            assert.equal((await entrar(PASS)).status, 200, 'la contraseña no debió cambiar');
+        });
+
+        it('cambio de contraseña: con datos válidos reemplaza la anterior', async () => {
+            const token = (await entrar(PASS)).data.token;
+            const nueva = 'Nueva3#clave';
+            const r = await api('POST', '/api/auth/change-password', { token, body: { password_actual: PASS, password_nueva: nueva } });
+            assert.equal(r.status, 200);
+            assert.equal((await entrar(PASS)).status, 401, 'la contraseña anterior sigue funcionando');
+            assert.equal((await entrar(nueva)).status, 200);
+        });
+    });
 });

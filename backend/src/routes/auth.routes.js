@@ -7,6 +7,8 @@ const { verifyToken } = authMiddleware;
 router.post('/registro', authController.registroFamiliar);
 router.post('/login', authController.login);
 router.get('/me', verifyToken, authController.getMe);
+router.post('/refresh', verifyToken, authController.refresh);
+router.post('/change-password', verifyToken, authController.changePassword);
 router.get('/padres', verifyToken, authController.getPadres);
 
 // Gestión de usuarios y roles (solo admin)
