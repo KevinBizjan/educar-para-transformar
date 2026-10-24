@@ -22,6 +22,7 @@ app.use('/api/academico', require('./routes/academico.routes'));
 app.use('/api/financiero', require('./routes/financiero.routes'));
 app.use('/api/servicios', require('./routes/servicios.routes'));
 app.use('/api/comunicacion', require('./routes/comunicacion.routes'));
+app.use('/api/inscripciones', require('./routes/inscripciones.routes'));
 
 // Health check de la API (útil para monitoreo del deploy)
 app.get('/api/health', (req, res) => {

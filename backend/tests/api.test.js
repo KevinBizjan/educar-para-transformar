@@ -438,4 +438,225 @@ describe('API Educar para Transformar', { skip }, () => {
             assert.equal((await entrar(nueva)).status, 200);
         });
     });
+
+    describe('Inscripciones a servicios (HU4)', () => {
+        const MES = 6;
+        const ANIO = 2040;
+        const sufijo = Date.now();
+        const PASS = 'Inicial1!x';
+        let A; let B;            // dos padres: { id, token }
+        let hijoA1; let hijoA2; let hijoB1;
+        const S = {};            // servicios creados para las pruebas
+
+        const inscribir = (token, alumno_id, servicio_id, mes = MES, anio = ANIO) =>
+            api('POST', '/api/inscripciones', { token, body: { alumno_id, servicio_id, mes, anio } });
+        const baja = (token, id) => api('DELETE', `/api/inscripciones/${id}`, { token });
+        const crearServicio = async (clave, tipo, extra = {}) => {
+            const r = await api('POST', '/api/inscripciones/servicios', {
+                token: tokens.admin, body: { tipo, nombre: `HU4-${clave}-${sufijo}`, precio_mensual: 1000, ...extra }
+            });
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            S[clave] = r.data.id;
+        };
+        const crearPadre = async (etiqueta) => {
+            const username = `hu4${etiqueta}-${sufijo}`;
+            const r = await api('POST', '/api/auth/users', {
+                token: tokens.admin, body: { nombre: `Padre ${etiqueta}`, username, password: PASS, rol: 'padre' }
+            });
+            assert.equal(r.status, 201);
+            const l = await api('POST', '/api/auth/login', { body: { username, password: PASS } });
+            return { id: r.data.id, token: l.data.token };
+        };
+        const crearHijo = async (padre, nombre) => (await db.query(
+            `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, tutor_id)
+             VALUES ($1, 'Servicios', $2, '2015-05-05', $3) RETURNING id`, [nombre, dniUnico(), padre.id]
+        )).rows[0].id;
+
+        before(async () => {
+            A = await crearPadre('A');
+            B = await crearPadre('B');
+            hijoA1 = await crearHijo(A, 'HijoA1');
+            hijoA2 = await crearHijo(A, 'HijoA2');
+            hijoB1 = await crearHijo(B, 'HijoB1');
+            for (const k of ['D1', 'D2', 'D3', 'D4', 'D5']) await crearServicio(k, 'Deporte');
+            await crearServicio('DCUPO', 'Deporte', { cupo_max: 1 });
+            await crearServicio('DCARRERA', 'Deporte', { cupo_max: 1 });
+            await crearServicio('T1', 'Transporte');
+            await crearServicio('T2', 'Transporte');
+            await crearServicio('COMEDOR', 'Comedor');
+            await crearServicio('INACTIVO', 'Deporte');
+            await api('PATCH', `/api/inscripciones/servicios/${S.INACTIVO}`, { token: tokens.admin, body: { activo: false } });
+        });
+
+        after(async () => {
+            const alumnos = [hijoA1, hijoA2, hijoB1];
+            await db.query('DELETE FROM facturas WHERE tutor_id = ANY($1)', [[A.id, B.id]]);
+            await db.query('DELETE FROM inscripciones_servicio WHERE alumno_id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM servicios WHERE nombre LIKE $1', [`HU4-%-${sufijo}`]);
+            await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnos]);
+            for (const p of [A, B]) await api('DELETE', `/api/auth/users/${p.id}`, { token: tokens.admin });
+        });
+
+        it('solo los padres y el administrador acceden', async () => {
+            assert.equal((await api('GET', '/api/inscripciones/catalogo')).status, 403);
+            assert.equal((await api('GET', '/api/inscripciones/catalogo', { token: tokens.alumno })).status, 403);
+            assert.equal((await api('GET', '/api/inscripciones/catalogo', { token: tokens.docente })).status, 403);
+            assert.equal((await api('GET', '/api/inscripciones/catalogo', { token: A.token })).status, 200);
+        });
+
+        it('el catálogo muestra los servicios activos con su cupo disponible', async () => {
+            const r = await api('GET', `/api/inscripciones/catalogo?mes=${MES}&anio=${ANIO}`, { token: A.token });
+            assert.equal(r.status, 200);
+            const por = (clave) => r.data.servicios.find(s => s.id === S[clave]);
+            assert.equal(por('D1').cupo_disponible, null, 'sin cupo máximo no hay límite');
+            assert.equal(por('DCUPO').cupo_max, 1);
+            assert.equal(por('DCUPO').cupo_disponible, 1);
+            assert.equal(por('INACTIVO'), undefined, 'un servicio inactivo no se ofrece');
+            assert.equal((await api('GET', '/api/inscripciones/catalogo?mes=13&anio=2040', { token: A.token })).status, 400);
+        });
+
+        it('inscribe a un hijo y rechaza los datos inválidos', async () => {
+            const ok = await inscribir(A.token, hijoA1, S.COMEDOR);
+            assert.equal(ok.status, 201);
+            assert.equal(ok.data.tipo, 'Comedor');
+
+            assert.equal((await inscribir(A.token, hijoA1, S.COMEDOR)).status, 409, 'duplicado');
+            assert.equal((await inscribir(A.token, hijoB1, S.COMEDOR)).status, 403, 'hijo de otra familia');
+            assert.equal((await inscribir(A.token, 2147483000, S.COMEDOR)).status, 404, 'alumno inexistente');
+            assert.equal((await inscribir(A.token, hijoA1, 2147483000)).status, 404, 'servicio inexistente');
+            assert.equal((await inscribir(A.token, hijoA1, S.INACTIVO)).status, 404, 'servicio inactivo');
+            assert.equal((await inscribir(A.token, hijoA1, S.D1, 13)).status, 400, 'mes inválido');
+            assert.equal((await inscribir(A.token, hijoA1, S.D1, 1, 2021)).status, 400, 'mes que ya pasó');
+            assert.equal((await api('POST', '/api/inscripciones', { token: A.token, body: { mes: MES, anio: ANIO } })).status, 400, 'faltan datos');
+        });
+
+        it('máximo 2 deportes por alumno y por mes', async () => {
+            const d1 = await inscribir(A.token, hijoA1, S.D1);
+            assert.equal(d1.status, 201);
+            assert.equal((await inscribir(A.token, hijoA1, S.D2)).status, 201);
+            const tercero = await inscribir(A.token, hijoA1, S.D3);
+            assert.equal(tercero.status, 409);
+            assert.match(tercero.data.message, /máximo en 2 deportes/);
+
+            assert.equal((await inscribir(A.token, hijoA1, S.D3, MES + 1)).status, 201, 'el límite es por mes');
+            assert.equal((await baja(A.token, d1.data.id)).status, 200);
+            assert.equal((await inscribir(A.token, hijoA1, S.D3)).status, 201, 'al dar de baja uno, se libera lugar');
+        });
+
+        it('un solo recorrido de transporte por mes, que puede cambiar al mes siguiente', async () => {
+            const t1 = await inscribir(A.token, hijoA1, S.T1);
+            assert.equal(t1.status, 201);
+            const otro = await inscribir(A.token, hijoA1, S.T2);
+            assert.equal(otro.status, 409);
+            assert.match(otro.data.message, /transporte/);
+            assert.equal((await inscribir(A.token, hijoA1, S.T2, MES + 1)).status, 201, 'otro recorrido el mes siguiente');
+            await baja(A.token, t1.data.id);
+            assert.equal((await inscribir(A.token, hijoA1, S.T2)).status, 201, 'tras la baja, elige el otro recorrido');
+        });
+
+        it('los distintos tipos de servicio no se pisan entre sí', async () => {
+            assert.equal((await inscribir(A.token, hijoA2, S.COMEDOR)).status, 201);
+            assert.equal((await inscribir(A.token, hijoA2, S.D1)).status, 201);
+            assert.equal((await inscribir(A.token, hijoA2, S.T1)).status, 201);
+        });
+
+        it('no inscribe cuando el servicio ya no tiene cupo, y la baja lo libera', async () => {
+            const primero = await inscribir(A.token, hijoA2, S.DCUPO);
+            assert.equal(primero.status, 201);
+            const sin = await inscribir(B.token, hijoB1, S.DCUPO);
+            assert.equal(sin.status, 409);
+            assert.match(sin.data.message, /cupo/);
+
+            const cat = await api('GET', `/api/inscripciones/catalogo?mes=${MES}&anio=${ANIO}`, { token: B.token });
+            assert.equal(cat.data.servicios.find(s => s.id === S.DCUPO).cupo_disponible, 0);
+
+            await baja(A.token, primero.data.id);
+            assert.equal((await inscribir(B.token, hijoB1, S.DCUPO)).status, 201);
+        });
+
+        it('dos pedidos simultáneos por el último cupo: solo uno se inscribe', async () => {
+            const [x, y] = await Promise.all([
+                inscribir(A.token, hijoA1, S.DCARRERA, MES + 2),
+                inscribir(B.token, hijoB1, S.DCARRERA, MES + 2),
+            ]);
+            assert.deepEqual([x.status, y.status].sort(), [201, 409]);
+        });
+
+        it('tres pedidos simultáneos de deportes para el mismo alumno: solo entran 2', async () => {
+            const pedidos = await Promise.all(['D3', 'D4', 'D5'].map(k => inscribir(A.token, hijoA2, S[k], MES + 3)));
+            assert.deepEqual(pedidos.map(p => p.status).sort(), [201, 201, 409]);
+            const lista = await api('GET', `/api/inscripciones/alumno/${hijoA2}?mes=${MES + 3}&anio=${ANIO}`, { token: A.token });
+            assert.equal(lista.data.length, 2);
+        });
+
+        it('lista las inscripciones activas del hijo, solo para su familia o el administrador', async () => {
+            const propia = await api('GET', `/api/inscripciones/alumno/${hijoA2}`, { token: A.token });
+            assert.equal(propia.status, 200);
+            assert.ok(propia.data.length >= 3);
+            assert.ok(propia.data.every(i => i.estado === 'Activa'));
+            assert.equal((await api('GET', `/api/inscripciones/alumno/${hijoA2}`, { token: B.token })).status, 403);
+            assert.equal((await api('GET', `/api/inscripciones/alumno/${hijoA2}`, { token: tokens.admin })).status, 200);
+            assert.equal((await api('GET', '/api/inscripciones/alumno/2147483000', { token: A.token })).status, 404);
+            const mes = await api('GET', `/api/inscripciones/alumno/${hijoA2}?mes=${MES}&anio=${ANIO}`, { token: A.token });
+            assert.ok(mes.data.every(i => i.mes === MES && i.anio === ANIO));
+        });
+
+        it('la baja es solo de la familia, se puede revertir y no procede si ya se facturó', async () => {
+            const insc = await inscribir(A.token, hijoA1, S.D4, MES + 4);
+            assert.equal(insc.status, 201);
+            assert.equal((await baja(B.token, insc.data.id)).status, 403, 'otra familia');
+            assert.equal((await baja(A.token, 2147483000)).status, 404);
+            assert.equal((await baja(A.token, insc.data.id)).status, 200);
+            const repetida = await baja(A.token, insc.data.id);
+            assert.equal(repetida.status, 200);
+            assert.match(repetida.data.message, /ya estaba/);
+
+            const reactivada = await inscribir(A.token, hijoA1, S.D4, MES + 4);
+            assert.equal(reactivada.status, 201);
+            assert.equal(reactivada.data.id, insc.data.id, 'se reactiva la misma inscripción');
+
+            const factura = (await db.query(
+                "INSERT INTO facturas (tutor_id, referencia, total) VALUES ($1, $2, 1000) RETURNING id", [A.id, `HU4-${sufijo}`]
+            )).rows[0].id;
+            await db.query(
+                "INSERT INTO factura_items (factura_id, alumno_id, inscripcion_id, descripcion, monto) VALUES ($1, $2, $3, 'Deporte', 1000)",
+                [factura, hijoA1, insc.data.id]
+            );
+            const facturada = await baja(A.token, insc.data.id);
+            assert.equal(facturada.status, 409);
+            assert.match(facturada.data.message, /facturada/);
+
+            await db.query("UPDATE facturas SET estado = 'Rechazada' WHERE id = $1", [factura]);
+            assert.equal((await baja(A.token, insc.data.id)).status, 200, 'con la factura rechazada vuelve a ser posible');
+        });
+
+        it('el administrador puede inscribir a cualquier alumno', async () => {
+            const r = await inscribir(tokens.admin, hijoB1, S.COMEDOR);
+            assert.equal(r.status, 201);
+        });
+
+        it('el catálogo lo administra solo el administrador y valida los datos', async () => {
+            const nuevo = (body, token = tokens.admin) => api('POST', '/api/inscripciones/servicios', { token, body });
+            assert.equal((await nuevo({ tipo: 'Deporte', nombre: 'X', precio_mensual: 100 }, A.token)).status, 403);
+            assert.equal((await nuevo({ tipo: 'Piscina', nombre: 'X', precio_mensual: 100 })).status, 400);
+            assert.equal((await nuevo({ tipo: 'Deporte', nombre: '  ', precio_mensual: 100 })).status, 400);
+            assert.equal((await nuevo({ tipo: 'Deporte', nombre: 'X', precio_mensual: 0 })).status, 400);
+            assert.equal((await nuevo({ tipo: 'Deporte', nombre: 'X', precio_mensual: 100, cupo_max: 0 })).status, 400);
+            assert.equal((await nuevo({ tipo: 'Transporte', nombre: `HU4-Ruta-${sufijo}`, precio_mensual: 100, ruta_id: 2147483000 })).status, 400);
+            const dup = await nuevo({ tipo: 'Deporte', nombre: `HU4-D1-${sufijo}`, precio_mensual: 100 });
+            assert.equal(dup.status, 409);
+
+            const patch = (body, id = S.D5, token = tokens.admin) => api('PATCH', `/api/inscripciones/servicios/${id}`, { token, body });
+            assert.equal((await patch({})).status, 400);
+            assert.equal((await patch({ precio_mensual: -5 })).status, 400);
+            assert.equal((await patch({ activo: 'si' })).status, 400);
+            assert.equal((await patch({ precio_mensual: 1500 }, 2147483000)).status, 404);
+            assert.equal((await patch({ precio_mensual: 1500 }, S.D5, A.token)).status, 403);
+            assert.equal((await patch({ precio_mensual: 1500, cupo_max: 25 })).status, 200);
+            const cat = await api('GET', `/api/inscripciones/catalogo?mes=${MES}&anio=${ANIO}`, { token: A.token });
+            const d5 = cat.data.servicios.find(s => s.id === S.D5);
+            assert.equal(d5.precio_mensual, 1500);
+            assert.equal(d5.cupo_max, 25);
+        });
+    });
 });

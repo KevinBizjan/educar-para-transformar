@@ -53,7 +53,41 @@ async function seed() {
         await seedDatosPrueba();
     }
 
+    // Catálogo demo de servicios facturables (HU4). Es idempotente: se puede repetir.
+    await seedServicios();
+
     console.log('Datos académicos iniciales creados.');
+}
+
+// Servicios de ejemplo para la app móvil: deportes, recorridos de transporte y comedor.
+// En producción el administrador los crea con POST /api/inscripciones/servicios.
+async function seedServicios() {
+    await db.query(
+        `INSERT INTO transporte_rutas (nombre_ruta, chofer_nombre, capacidad_max)
+         SELECT 'Ruta Norte', 'Marta Gómez', 18
+         WHERE NOT EXISTS (SELECT 1 FROM transporte_rutas WHERE nombre_ruta = 'Ruta Norte')`
+    );
+    const idDe = async (tabla, columna, valor) => {
+        const r = await db.query(`SELECT id FROM ${tabla} WHERE ${columna} = $1 ORDER BY id LIMIT 1`, [valor]);
+        return r.rows[0] ? r.rows[0].id : null;
+    };
+    const servicios = [
+        ['Deporte', 'Fútbol', 6000, 20, await idDe('actividades_extra', 'nombre', 'Fútbol'), null],
+        ['Deporte', 'Natación', 9000, 15, null, null],
+        ['Deporte', 'Vóley', 5000, 15, null, null],
+        ['Deporte', 'Básquet', 5500, 15, null, null],
+        ['Transporte', 'Ruta Centro', 12000, 18, null, await idDe('transporte_rutas', 'nombre_ruta', 'Ruta Centro')],
+        ['Transporte', 'Ruta Norte', 12000, 18, null, await idDe('transporte_rutas', 'nombre_ruta', 'Ruta Norte')],
+        ['Comedor', 'Comedor mensual', 25000, null, null, null],
+    ];
+    for (const [tipo, nombre, precio, cupo, actividadId, rutaId] of servicios) {
+        await db.query(
+            `INSERT INTO servicios (tipo, nombre, precio_mensual, cupo_max, actividad_id, ruta_id)
+             VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (tipo, nombre) DO NOTHING`,
+            [tipo, nombre, precio, cupo, actividadId, rutaId]
+        );
+    }
+    console.log('Catálogo de servicios creado.');
 }
 
 // Carga un set chico de datos de ejemplo para poder probar el sistema de inmediato.
