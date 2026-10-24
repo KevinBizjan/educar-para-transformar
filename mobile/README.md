@@ -14,7 +14,7 @@ npx expo start
 
 Escaneá el código QR con Expo Go. La computadora y el celular tienen que estar en la misma red Wi-Fi.
 
-La pantalla inicial muestra si la app llega al backend. Por defecto usa el servicio publicado en Render; la primera vez puede tardar hasta 1 minuto, porque el plan gratuito lo duerme tras 15 minutos sin tráfico.
+Por defecto la app usa el servicio publicado en Render; la primera vez puede tardar hasta 1 minuto, porque el plan gratuito lo duerme tras 15 minutos sin tráfico. Para entrar usá una cuenta de familia (rol padre/tutor): la misma que usa en el portal web.
 
 ### Usar un backend local
 
@@ -29,7 +29,7 @@ En el emulador de Android la computadora es `http://10.0.2.2:3000`. Después de 
 ## Comprobar sin celular
 
 ```bash
-npm test                   # 6 pruebas del cliente de la API (sin red)
+npm test                   # 18 pruebas: cliente de la API, sesión y validaciones (sin red)
 npm run verificar:conexion # llama al backend real: GET /api/health
 ```
 
@@ -37,10 +37,22 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 
 | Ruta | Qué hay |
 |---|---|
-| `App.js` | Pantalla inicial (prueba de conexión) |
+| `App.js` | Raíz de la app: redirige según la sesión y el rol |
+| `src/auth/` | Sesión: login, renovación y cierre (`sesion.js`), contexto de React y almacenamiento seguro del token |
+| `src/screens/` | Pantallas: inicio de sesión, inicio del padre/tutor, cambio de contraseña y acceso no disponible |
+| `src/utils/validators.js` | Reglas de contraseña (las mismas del backend y la web) |
 | `src/config.js` | URL de la API y claves públicas de Supabase (variables `EXPO_PUBLIC_*`) |
 | `src/api/client.js` | Cliente de la API: token JWT, errores en español, tiempo de espera |
 | `src/lib/supabase.js` | Cliente de Supabase, solo Storage |
+
+## Sesión y roles (HU3)
+
+- **Mismas credenciales que la web:** el login usa `POST /api/auth/login` y la misma tabla de usuarios; la app no guarda cuentas propias.
+- **Token seguro:** se guarda con SecureStore (Keychain en iOS, Keystore en Android), no en texto plano.
+- **Renovación:** mientras la app está abierta, el token se renueva cada 10 minutos y al volver a primer plano (`POST /api/auth/refresh`). Con más de 30 minutos sin abrirla, el servidor lo rechaza y hay que iniciar sesión de nuevo. Una sesión no puede superar las 12 horas.
+- **Por rol:** los padres/tutores entran al inicio; administrador, docente y alumno ven un aviso para usar el portal web.
+- **Cambio de contraseña:** pide la actual y aplica las mismas reglas que el registro web.
+- **Pendiente:** la recuperación de contraseña por correo necesita el motor de correo (HU10).
 
 ## Notas
 

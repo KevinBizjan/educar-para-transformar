@@ -18,7 +18,13 @@ export class ApiError extends Error {
 let token = null;
 export const setToken = (nuevo) => { token = nuevo || null; };
 
+// Aviso para cerrar la sesión en la app cuando el servidor rechaza un token vencido o inválido
+// (401 en una llamada que SÍ llevaba token; un login fallido no lo dispara).
+let alExpirar = null;
+export const alSesionExpirada = (funcion) => { alExpirar = funcion || null; };
+
 export async function apiFetch(ruta, { metodo = 'GET', cuerpo, tiempoEsperaMs = TIEMPO_ESPERA_MS } = {}) {
+    const tokenEnviado = token;
     const control = new AbortController();
     const temporizador = setTimeout(() => control.abort(), tiempoEsperaMs);
     try {
@@ -26,7 +32,7 @@ export async function apiFetch(ruta, { metodo = 'GET', cuerpo, tiempoEsperaMs = 
             method: metodo,
             headers: {
                 'Content-Type': 'application/json',
-                ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                ...(tokenEnviado ? { Authorization: `Bearer ${tokenEnviado}` } : {}),
             },
             body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
             signal: control.signal,
@@ -34,6 +40,7 @@ export async function apiFetch(ruta, { metodo = 'GET', cuerpo, tiempoEsperaMs = 
         let datos = null;
         try { datos = await respuesta.json(); } catch { /* respuesta sin JSON */ }
         if (!respuesta.ok) {
+            if (respuesta.status === 401 && tokenEnviado && alExpirar) alExpirar();
             throw new ApiError((datos && datos.message) || `Error ${respuesta.status} del servidor`, respuesta.status, datos);
         }
         return datos;
