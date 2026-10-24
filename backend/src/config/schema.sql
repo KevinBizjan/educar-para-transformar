@@ -265,6 +265,77 @@ DELETE FROM asistencias a USING asistencias b
 CREATE UNIQUE INDEX IF NOT EXISTS asistencias_alumno_fecha_materia_uq
     ON asistencias (alumno_id, fecha, (COALESCE(materia_id, 0)));
 
+-- --- App móvil (Parte 3, HU1): facturación consolidada, servicios e inscripciones ---
+-- Tablas NUEVAS: no modifican cuotas_config, pagos ni saldos_alumnos (módulo web).
+-- Los CHECK y las claves foráneas rechazan datos o relaciones inválidas desde la base.
+
+-- Catálogo de servicios que se facturan a las familias.
+CREATE TABLE IF NOT EXISTS servicios (
+    id SERIAL PRIMARY KEY,
+    tipo TEXT NOT NULL CHECK (tipo IN ('Deporte', 'Transporte', 'Comedor')),
+    nombre TEXT NOT NULL,
+    precio_mensual DECIMAL(10,2) NOT NULL CHECK (precio_mensual > 0),
+    cupo_max INTEGER CHECK (cupo_max IS NULL OR cupo_max > 0),
+    actividad_id INTEGER REFERENCES actividades_extra(id),
+    ruta_id INTEGER REFERENCES transporte_rutas(id),
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    CHECK (actividad_id IS NULL OR tipo = 'Deporte'),
+    CHECK (ruta_id IS NULL OR tipo = 'Transporte'),
+    UNIQUE (tipo, nombre)
+);
+
+-- Inscripción de un alumno a un servicio en un mes (el transporte puede variar mes a mes).
+CREATE TABLE IF NOT EXISTS inscripciones_servicio (
+    id SERIAL PRIMARY KEY,
+    alumno_id INTEGER NOT NULL REFERENCES alumnos(id),
+    servicio_id INTEGER NOT NULL REFERENCES servicios(id),
+    mes INTEGER NOT NULL CHECK (mes BETWEEN 1 AND 12),
+    anio INTEGER NOT NULL CHECK (anio BETWEEN 2020 AND 2100),
+    estado TEXT NOT NULL DEFAULT 'Activa' CHECK (estado IN ('Activa', 'Baja')),
+    creada_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (alumno_id, servicio_id, mes, anio)
+);
+
+-- Factura consolidada de un padre/tutor, con una referencia de pago para la transferencia.
+CREATE TABLE IF NOT EXISTS facturas (
+    id SERIAL PRIMARY KEY,
+    tutor_id INTEGER NOT NULL REFERENCES users(id),
+    referencia TEXT NOT NULL UNIQUE,
+    total DECIMAL(10,2) NOT NULL CHECK (total > 0),
+    estado TEXT NOT NULL DEFAULT 'Pendiente' CHECK (estado IN ('Pendiente', 'En revision', 'Pagada', 'Rechazada')),
+    emitida_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    pagada_en TIMESTAMP
+);
+
+-- Renglones de la factura: cada uno es una cuota O una inscripción a un servicio.
+CREATE TABLE IF NOT EXISTS factura_items (
+    id SERIAL PRIMARY KEY,
+    factura_id INTEGER NOT NULL REFERENCES facturas(id) ON DELETE CASCADE,
+    alumno_id INTEGER NOT NULL REFERENCES alumnos(id),
+    cuota_id INTEGER REFERENCES cuotas_config(id),
+    inscripcion_id INTEGER REFERENCES inscripciones_servicio(id),
+    descripcion TEXT NOT NULL,
+    monto DECIMAL(10,2) NOT NULL CHECK (monto > 0),
+    CHECK ((cuota_id IS NOT NULL AND inscripcion_id IS NULL) OR (cuota_id IS NULL AND inscripcion_id IS NOT NULL))
+);
+
+-- Comprobantes de transferencia: relación 1:N con la factura. El archivo vive en
+-- Supabase Storage; acá solo se guarda su ruta y sus datos.
+CREATE TABLE IF NOT EXISTS comprobantes_pago (
+    id SERIAL PRIMARY KEY,
+    factura_id INTEGER NOT NULL REFERENCES facturas(id) ON DELETE CASCADE,
+    nombre_archivo TEXT NOT NULL,
+    ruta_storage TEXT NOT NULL UNIQUE,
+    tipo_mime TEXT NOT NULL CHECK (tipo_mime IN ('image/png', 'image/jpeg', 'application/pdf')),
+    tamano_bytes INTEGER NOT NULL CHECK (tamano_bytes > 0),
+    subido_por INTEGER NOT NULL REFERENCES users(id),
+    subido_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS factura_items_factura_idx ON factura_items (factura_id);
+CREATE INDEX IF NOT EXISTS comprobantes_pago_factura_idx ON comprobantes_pago (factura_id);
+CREATE INDEX IF NOT EXISTS inscripciones_servicio_alumno_idx ON inscripciones_servicio (alumno_id, anio, mes);
+
 -- --- Seguridad: Row Level Security en todas las tablas ---
 -- Supabase expone automáticamente una API REST pública sobre el esquema
 -- `public`; sin RLS cualquiera con la clave pública podría leer/escribir las
@@ -296,3 +367,8 @@ ALTER TABLE inscripciones_extra ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notificaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE actividad_asistencias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE actividad_calificaciones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE servicios ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inscripciones_servicio ENABLE ROW LEVEL SECURITY;
+ALTER TABLE facturas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE factura_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comprobantes_pago ENABLE ROW LEVEL SECURITY;
