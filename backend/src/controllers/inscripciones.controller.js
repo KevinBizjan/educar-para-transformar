@@ -11,7 +11,7 @@
 // superar un cupo ni el máximo de deportes.
 const db = require('../config/database');
 const {
-    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, ReglaError,
+    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, rangoDelMes, ReglaError,
 } = require('../utils/inscripciones');
 
 const TIPOS = ['Deporte', 'Transporte', 'Comedor'];
@@ -62,6 +62,94 @@ exports.getCatalogo = async (req, res) => {
                 ...s,
                 cupo_disponible: s.cupo_max === null ? null : Math.max(s.cupo_max - s.inscriptos, 0),
             })),
+        });
+    } catch (err) {
+        res.status(500).json({ message: 'Error en el servidor' });
+    }
+};
+
+// --- Resumen de la familia (pantalla "Mis hijos" de la app, HU5) ---
+// Devuelve en una sola respuesta los hijos del padre autenticado, con sus servicios del mes, el
+// consumo real del comedor (la asistencia que ya registra la escuela) y el saldo pendiente.
+// Son 3 consultas (2 de ellas en paralelo) sin importar cuántos hijos haya, para que la app cargue rápido.
+exports.getResumenFamilia = async (req, res) => {
+    const base = periodoActual();
+    const mes = req.query.mes === undefined ? base.mes : parseInt(req.query.mes);
+    const anio = req.query.anio === undefined ? base.anio : parseInt(req.query.anio);
+    const error = validarMesAnio(mes, anio);
+    if (error) return res.status(400).json({ message: error });
+    const { desde, hasta } = rangoDelMes(mes, anio);
+
+    try {
+        const hijos = (await db.query(
+            `SELECT a.id, a.nombre, a.apellido, c.division, n.nombre AS nivel,
+                    COALESCE(s.saldo_pendiente, 0) AS saldo_pendiente
+             FROM alumnos a
+             LEFT JOIN cursos c ON c.id = a.curso_id
+             LEFT JOIN niveles n ON n.id = c.nivel_id
+             LEFT JOIN saldos_alumnos s ON s.alumno_id = a.id
+             WHERE a.tutor_id = $1
+             ORDER BY a.apellido, a.nombre`,
+            [req.user.id]
+        )).rows;
+        const ids = hijos.map((h) => h.id);
+
+        let servicios = [];
+        let comedor = [];
+        if (ids.length > 0) {
+            // Las dos consultas no dependen entre sí: van en paralelo (una ida y vuelta menos a la base).
+            const [respServicios, respComedor] = await Promise.all([
+                db.query(
+                    `SELECT i.id, i.alumno_id, i.servicio_id, s.tipo, s.nombre, s.precio_mensual
+                     FROM inscripciones_servicio i JOIN servicios s ON s.id = i.servicio_id
+                     WHERE i.alumno_id = ANY($1) AND i.mes = $2 AND i.anio = $3 AND i.estado = 'Activa'
+                     ORDER BY s.tipo, s.nombre`,
+                    [ids, mes, anio]
+                ),
+                db.query(
+                    `SELECT alumno_id,
+                            COUNT(*) FILTER (WHERE consumio_menu)::int AS dias_consumidos,
+                            COUNT(*)::int AS dias_registrados
+                     FROM comedor_asistencias
+                     WHERE alumno_id = ANY($1) AND fecha >= $2 AND fecha < $3
+                     GROUP BY alumno_id`,
+                    [ids, desde, hasta]
+                ),
+            ]);
+            servicios = respServicios.rows;
+            comedor = respComedor.rows;
+        }
+
+        const resultado = hijos.map((h) => {
+            const susServicios = servicios.filter((s) => s.alumno_id === h.id)
+                .map(({ alumno_id, ...resto }) => resto);
+            const consumo = comedor.find((c) => c.alumno_id === h.id);
+            return {
+                id: h.id,
+                nombre: h.nombre,
+                apellido: h.apellido,
+                nivel: h.nivel || null,
+                division: h.division || null,
+                saldo_pendiente: h.saldo_pendiente,
+                estado_cuenta: h.saldo_pendiente > 0 ? 'Pendiente' : 'Al día',
+                servicios: susServicios,
+                total_servicios_mes: susServicios.reduce((suma, s) => suma + s.precio_mensual, 0),
+                comedor: {
+                    inscripto: susServicios.some((s) => s.tipo === 'Comedor'),
+                    dias_consumidos: consumo ? consumo.dias_consumidos : 0,
+                    dias_registrados: consumo ? consumo.dias_registrados : 0,
+                },
+            };
+        });
+
+        res.json({
+            mes, anio,
+            resumen: {
+                cantidad_hijos: resultado.length,
+                saldo_total: resultado.reduce((suma, h) => suma + h.saldo_pendiente, 0),
+                total_servicios_mes: resultado.reduce((suma, h) => suma + h.total_servicios_mes, 0),
+            },
+            hijos: resultado,
         });
     } catch (err) {
         res.status(500).json({ message: 'Error en el servidor' });

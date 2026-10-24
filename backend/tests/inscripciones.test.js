@@ -2,7 +2,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const {
-    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, ReglaError,
+    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, rangoDelMes, ReglaError,
 } = require('../src/utils/inscripciones');
 
 describe('Reglas de inscripción a servicios', () => {
@@ -34,6 +34,13 @@ describe('Reglas de inscripción a servicios', () => {
         assert.equal(validarPeriodoInscripcion(12, 2026, diciembre), '');
         assert.equal(validarPeriodoInscripcion(1, 2027, diciembre), '');
         assert.match(validarPeriodoInscripcion(11, 2026, diciembre), /ya pasó/);
+    });
+
+    it('calcula el rango de fechas de un mes, incluido el cambio de año', () => {
+        assert.deepEqual(rangoDelMes(6, 2027), { desde: '2027-06-01', hasta: '2027-07-01' });
+        assert.deepEqual(rangoDelMes(1, 2027), { desde: '2027-01-01', hasta: '2027-02-01' });
+        assert.deepEqual(rangoDelMes(9, 2027), { desde: '2027-09-01', hasta: '2027-10-01' });
+        assert.deepEqual(rangoDelMes(12, 2027), { desde: '2027-12-01', hasta: '2028-01-01' });
     });
 
     it('ReglaError lleva el código HTTP', () => {

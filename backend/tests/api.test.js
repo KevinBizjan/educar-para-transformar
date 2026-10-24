@@ -659,4 +659,159 @@ describe('API Educar para Transformar', { skip }, () => {
             assert.equal(d5.cupo_max, 25);
         });
     });
+
+    describe('Resumen de la familia para la app móvil (HU5)', () => {
+        const MES = 6;
+        const ANIO = 2041;
+        const sufijo = Date.now();
+        const PASS = 'Inicial1!x';
+        let C; let D; let E;     // C: dos hijos; D: sin hijos; E: otra familia con un hijo
+        let hijoC1; let hijoC2; let hijoE1;
+        const S = {};
+
+        const resumen = (token, query = `?mes=${MES}&anio=${ANIO}`) => api('GET', `/api/inscripciones/resumen-familia${query}`, { token });
+        const crearPadre = async (etiqueta) => {
+            const username = `hu5${etiqueta}-${sufijo}`;
+            const r = await api('POST', '/api/auth/users', {
+                token: tokens.admin, body: { nombre: `Padre ${etiqueta}`, username, password: PASS, rol: 'padre' }
+            });
+            assert.equal(r.status, 201);
+            const l = await api('POST', '/api/auth/login', { body: { username, password: PASS } });
+            return { id: r.data.id, token: l.data.token };
+        };
+        const crearHijo = async (padre, nombre, apellido) => (await db.query(
+            `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, tutor_id)
+             VALUES ($1, $2, $3, '2015-05-05', $4) RETURNING id`, [nombre, apellido, dniUnico(), padre.id]
+        )).rows[0].id;
+        const crearServicio = async (clave, tipo, precio) => {
+            const r = await api('POST', '/api/inscripciones/servicios', {
+                token: tokens.admin, body: { tipo, nombre: `HU5-${clave}-${sufijo}`, precio_mensual: precio }
+            });
+            assert.equal(r.status, 201);
+            S[clave] = r.data.id;
+        };
+        const inscribir = (token, alumno_id, servicio_id, mes = MES) =>
+            api('POST', '/api/inscripciones', { token, body: { alumno_id, servicio_id, mes, anio: ANIO } });
+        const comedor = (alumno, fecha, consumio) => db.query(
+            'INSERT INTO comedor_asistencias (alumno_id, fecha, consumio_menu) VALUES ($1, $2, $3)', [alumno, fecha, consumio]);
+
+        before(async () => {
+            C = await crearPadre('C');
+            D = await crearPadre('D');
+            E = await crearPadre('E');
+            hijoC1 = await crearHijo(C, 'Ana', 'Zuñiga');
+            hijoC2 = await crearHijo(C, 'Beto', 'Alvarez');
+            hijoE1 = await crearHijo(E, 'Eva', 'Ajena');
+            await crearServicio('FUTBOL', 'Deporte', 6000);
+            await crearServicio('TRANS', 'Transporte', 12000);
+            await crearServicio('COMEDOR', 'Comedor', 25000);
+
+            // Ana: fútbol + comedor este mes, y transporte el mes siguiente (no debe aparecer en junio)
+            await inscribir(C.token, hijoC1, S.FUTBOL);
+            await inscribir(C.token, hijoC1, S.COMEDOR);
+            await inscribir(C.token, hijoC1, S.TRANS, MES + 1);
+            // Beto: sin servicios. La familia E tiene su propio hijo inscripto.
+            await inscribir(E.token, hijoE1, S.FUTBOL);
+
+            // Comedor de Ana: 3 días registrados en junio (2 con menú) y 1 día de mayo (no cuenta)
+            await comedor(hijoC1, `${ANIO}-06-03`, true);
+            await comedor(hijoC1, `${ANIO}-06-04`, true);
+            await comedor(hijoC1, `${ANIO}-06-05`, false);
+            await comedor(hijoC1, `${ANIO}-05-31`, true);
+            await comedor(hijoC1, `${ANIO}-07-01`, true);
+
+            // Saldo: Ana debe, Beto no tiene registro
+            await db.query('INSERT INTO saldos_alumnos (alumno_id, saldo_pendiente) VALUES ($1, 15000.5)', [hijoC1]);
+        });
+
+        after(async () => {
+            const alumnos = [hijoC1, hijoC2, hijoE1];
+            await db.query('DELETE FROM comedor_asistencias WHERE alumno_id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM saldos_alumnos WHERE alumno_id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM inscripciones_servicio WHERE alumno_id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM servicios WHERE nombre LIKE $1', [`HU5-%-${sufijo}`]);
+            await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnos]);
+            for (const p of [C, D, E]) await api('DELETE', `/api/auth/users/${p.id}`, { token: tokens.admin });
+        });
+
+        it('es solo para padres y valida el período', async () => {
+            assert.equal((await api('GET', '/api/inscripciones/resumen-familia')).status, 403);
+            assert.equal((await resumen(tokens.admin)).status, 403);
+            assert.equal((await resumen(tokens.docente)).status, 403);
+            assert.equal((await resumen(tokens.alumno)).status, 403);
+            assert.equal((await resumen(C.token, '?mes=13&anio=2041')).status, 400);
+            assert.equal((await resumen(C.token, '?mes=6&anio=1900')).status, 400);
+            assert.equal((await resumen(C.token, '')).status, 200, 'sin período usa el mes actual');
+        });
+
+        it('muestra solo los hijos del padre autenticado', async () => {
+            const r = await resumen(C.token);
+            assert.equal(r.status, 200);
+            assert.deepEqual(r.data.hijos.map(h => h.id).sort(), [hijoC1, hijoC2].sort());
+            assert.ok(!r.data.hijos.some(h => h.id === hijoE1), 'no debe aparecer el hijo de otra familia');
+            assert.equal(r.data.resumen.cantidad_hijos, 2);
+            assert.deepEqual(r.data.hijos.map(h => h.apellido), ['Alvarez', 'Zuñiga'], 'ordenados por apellido');
+
+            const otra = await resumen(E.token);
+            assert.deepEqual(otra.data.hijos.map(h => h.id), [hijoE1]);
+        });
+
+        it('un padre sin hijos recibe una lista vacía', async () => {
+            const r = await resumen(D.token);
+            assert.equal(r.status, 200);
+            assert.deepEqual(r.data.hijos, []);
+            assert.equal(r.data.resumen.saldo_total, 0);
+        });
+
+        it('trae los servicios inscriptos del mes, con su precio y el total', async () => {
+            const r = await resumen(C.token);
+            const ana = r.data.hijos.find(h => h.id === hijoC1);
+            const beto = r.data.hijos.find(h => h.id === hijoC2);
+            assert.deepEqual(ana.servicios.map(s => s.tipo).sort(), ['Comedor', 'Deporte']);
+            assert.equal(ana.total_servicios_mes, 31000);
+            assert.equal(beto.servicios.length, 0);
+            assert.equal(beto.total_servicios_mes, 0);
+            assert.equal(r.data.resumen.total_servicios_mes, 31000);
+
+            const julio = await resumen(C.token, `?mes=${MES + 1}&anio=${ANIO}`);
+            const anaJulio = julio.data.hijos.find(h => h.id === hijoC1);
+            assert.deepEqual(anaJulio.servicios.map(s => s.tipo), ['Transporte'], 'cada mes muestra sus servicios');
+        });
+
+        it('una inscripción dada de baja deja de aparecer', async () => {
+            const insc = await inscribir(C.token, hijoC2, S.FUTBOL);
+            assert.equal(insc.status, 201);
+            let r = await resumen(C.token);
+            assert.equal(r.data.hijos.find(h => h.id === hijoC2).servicios.length, 1);
+            await api('DELETE', `/api/inscripciones/${insc.data.id}`, { token: C.token });
+            r = await resumen(C.token);
+            assert.equal(r.data.hijos.find(h => h.id === hijoC2).servicios.length, 0);
+        });
+
+        it('informa el consumo real del comedor a partir de la asistencia registrada', async () => {
+            const r = await resumen(C.token);
+            const ana = r.data.hijos.find(h => h.id === hijoC1);
+            assert.deepEqual(ana.comedor, { inscripto: true, dias_consumidos: 2, dias_registrados: 3 });
+            const beto = r.data.hijos.find(h => h.id === hijoC2);
+            assert.deepEqual(beto.comedor, { inscripto: false, dias_consumidos: 0, dias_registrados: 0 });
+        });
+
+        it('informa el saldo y el estado de cuenta de cada hijo', async () => {
+            const r = await resumen(C.token);
+            const ana = r.data.hijos.find(h => h.id === hijoC1);
+            const beto = r.data.hijos.find(h => h.id === hijoC2);
+            assert.equal(ana.saldo_pendiente, 15000.5);
+            assert.equal(ana.estado_cuenta, 'Pendiente');
+            assert.equal(beto.saldo_pendiente, 0);
+            assert.equal(beto.estado_cuenta, 'Al día');
+            assert.equal(r.data.resumen.saldo_total, 15000.5);
+        });
+
+        it('los hijos sin curso asignado se informan sin nivel ni división', async () => {
+            const r = await resumen(C.token);
+            const ana = r.data.hijos.find(h => h.id === hijoC1);
+            assert.equal(ana.nivel, null);
+            assert.equal(ana.division, null);
+        });
+    });
 });

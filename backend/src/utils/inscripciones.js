@@ -21,6 +21,14 @@ const validarPeriodoInscripcion = (mes, anio, hoy = new Date()) => {
     return '';
 };
 
+// Rango de fechas [desde, hasta) de un mes, en formato YYYY-MM-DD (para filtrar columnas DATE).
+const rangoDelMes = (mes, anio) => {
+    const dos = (n) => String(n).padStart(2, '0');
+    const desde = `${anio}-${dos(mes)}-01`;
+    const hasta = mes === 12 ? `${anio + 1}-01-01` : `${anio}-${dos(mes + 1)}-01`;
+    return { desde, hasta };
+};
+
 // Error de una regla de negocio: lleva el código HTTP con el que se responde.
 class ReglaError extends Error {
     constructor(estado, mensaje) {
@@ -29,4 +37,4 @@ class ReglaError extends Error {
     }
 }
 
-module.exports = { MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, ReglaError };
+module.exports = { MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, rangoDelMes, ReglaError };

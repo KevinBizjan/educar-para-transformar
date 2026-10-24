@@ -2,7 +2,7 @@ import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext.js';
 import { estilos } from './estilos.js';
 
-// Pantalla principal del padre/tutor. "Mis hijos" y las cuotas se suman en las próximas HU.
+// "Mi cuenta" del padre/tutor: datos de la cuenta, cambio de contraseña y cierre de sesión.
 export default function InicioScreen({ alCambiarPassword }) {
     const { usuario, cerrarSesion } = useAuth();
 
@@ -16,15 +16,15 @@ export default function InicioScreen({ alCambiarPassword }) {
 
     return (
         <ScrollView contentContainerStyle={estilos.pantalla}>
-            <Text style={estilos.titulo}>Hola, {usuario.nombre}</Text>
-            <Text style={estilos.subtitulo}>Padre / Tutor</Text>
+            <Text style={estilos.titulo}>Mi cuenta</Text>
+            <Text style={estilos.subtitulo}>{usuario.nombre} · Padre / Tutor</Text>
 
             <View style={estilos.tarjeta}>
                 <Text style={estilos.etiqueta}>Tu cuenta</Text>
                 <Text style={estilos.texto}>Usuario: {usuario.username}</Text>
 
                 <Text style={[estilos.etiqueta, { marginTop: 20 }]}>Próximamente</Text>
-                <Text style={estilos.texto}>Tus hijos, las cuotas y los pagos van a aparecer acá.</Text>
+                <Text style={estilos.texto}>Las cuotas y los pagos van a aparecer acá.</Text>
 
                 <Pressable style={estilos.botonSecundario} onPress={alCambiarPassword}>
                     <Text style={estilos.botonTextoSecundario}>Cambiar contraseña</Text>
