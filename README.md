@@ -90,6 +90,8 @@ npm run dev
 * `frontend/src/pages/`: Dashboards específicos para cada rol de usuario.
 * `frontend/src/utils/`: Validadores y helpers de comunicación API para el cliente.
 * `frontend/src/context/`: Estado global de autenticación (`AuthContext`).
+* `mobile/`: App móvil para padres y tutores (React Native con Expo). Ver [mobile/README.md](mobile/README.md).
+* `docs/PROTOCOLO_IA.md`: Protocolo de validación del código generado con IA y bitácora.
 
 ## 🔁 Integración continua y flujo de trabajo
 
