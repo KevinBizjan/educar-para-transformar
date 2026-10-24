@@ -1,0 +1,23 @@
+{
+  "name": "educar-para-transformar-movil",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
+    "expo": "~58.0.19",
+    "expo-status-bar": "~58.0.4",
+    "react": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-url-polyfill": "^4.0.0"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "test": "node --test __tests__/*.test.mjs",
+    "verificar:conexion": "node scripts/verificar-conexion.mjs"
+  },
+  "private": true,
+  "description": "App móvil (React Native con Expo) de Educar para Transformar"
+}
