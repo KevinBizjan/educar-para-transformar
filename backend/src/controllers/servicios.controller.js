@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { MAX_RECORRIDOS } = require('../utils/deportes');
 
 const HORA_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -42,6 +43,11 @@ exports.createRutaTransporte = async (req, res) => {
     }
 
     try {
+        // El servicio de transporte tiene cuatro recorridos.
+        const { n } = (await db.query('SELECT COUNT(*)::int AS n FROM transporte_rutas')).rows[0];
+        if (n >= MAX_RECORRIDOS) {
+            return res.status(409).json({ message: `El servicio de transporte tiene como máximo ${MAX_RECORRIDOS} recorridos` });
+        }
         const result = await db.query(
             'INSERT INTO transporte_rutas (nombre_ruta, chofer_nombre, capacidad_max) VALUES ($1, $2, $3) RETURNING id',
             [nombre, chofer, capacidad]

@@ -59,34 +59,73 @@ async function seed() {
     console.log('Datos académicos iniciales creados.');
 }
 
-// Servicios de ejemplo para la app móvil: deportes, recorridos de transporte y comedor.
+// Catálogo demo para la app móvil y los reportes: grupos de deporte (cada uno con su profesor,
+// nivel y horario), los cuatro recorridos del transporte y el comedor. Es idempotente.
 // En producción el administrador los crea con POST /api/inscripciones/servicios.
 async function seedServicios() {
-    await db.query(
-        `INSERT INTO transporte_rutas (nombre_ruta, chofer_nombre, capacidad_max)
-         SELECT 'Ruta Norte', 'Marta Gómez', 18
-         WHERE NOT EXISTS (SELECT 1 FROM transporte_rutas WHERE nombre_ruta = 'Ruta Norte')`
-    );
-    const idDe = async (tabla, columna, valor) => {
-        const r = await db.query(`SELECT id FROM ${tabla} WHERE ${columna} = $1 ORDER BY id LIMIT 1`, [valor]);
-        return r.rows[0] ? r.rows[0].id : null;
-    };
-    const servicios = [
-        ['Deporte', 'Fútbol', 6000, 20, await idDe('actividades_extra', 'nombre', 'Fútbol'), null],
-        ['Deporte', 'Natación', 9000, 15, null, null],
-        ['Deporte', 'Vóley', 5000, 15, null, null],
-        ['Deporte', 'Básquet', 5500, 15, null, null],
-        ['Transporte', 'Ruta Centro', 12000, 18, null, await idDe('transporte_rutas', 'nombre_ruta', 'Ruta Centro')],
-        ['Transporte', 'Ruta Norte', 12000, 18, null, await idDe('transporte_rutas', 'nombre_ruta', 'Ruta Norte')],
-        ['Comedor', 'Comedor mensual', 25000, null, null, null],
-    ];
-    for (const [tipo, nombre, precio, cupo, actividadId, rutaId] of servicios) {
+    const una = async (sql, params = []) => (await db.query(sql, params)).rows[0] || null;
+
+    // Los deportes (actividades) que todavía no existan
+    for (const nombre of ['Natación', 'Vóley', 'Básquet']) {
         await db.query(
-            `INSERT INTO servicios (tipo, nombre, precio_mensual, cupo_max, actividad_id, ruta_id)
-             VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (tipo, nombre) DO NOTHING`,
-            [tipo, nombre, precio, cupo, actividadId, rutaId]
+            `INSERT INTO actividades_extra (nombre, tipo, horario, cupo_max)
+             SELECT $1::text, 'Deporte', 'Ver grupos', 20
+             WHERE NOT EXISTS (SELECT 1 FROM actividades_extra WHERE nombre = $1::text)`,
+            [nombre]
         );
     }
+
+    // Los cuatro recorridos del transporte (sin pasar del máximo si ya hay otros cargados)
+    const recorridos = [['Ruta Centro', 'Carlos Suárez'], ['Ruta Norte', 'Marta Gómez'], ['Ruta Sur', 'Pablo Ríos'], ['Ruta Este', 'Laura Medina']];
+    for (const [nombre, chofer] of recorridos) {
+        await db.query(
+            `INSERT INTO transporte_rutas (nombre_ruta, chofer_nombre, capacidad_max)
+             SELECT $1::text, $2::text, 18
+             WHERE NOT EXISTS (SELECT 1 FROM transporte_rutas WHERE nombre_ruta = $1::text)
+               AND (SELECT COUNT(*) FROM transporte_rutas) < 4`,
+            [nombre, chofer]
+        );
+    }
+
+    // Grupos de deporte: necesitan docentes y niveles de la escuela
+    const docentes = (await db.query("SELECT id FROM personal WHERE tipo = 'Docente' AND estado = 'Activo' ORDER BY id LIMIT 2")).rows.map((d) => d.id);
+    if (docentes.length > 0) {
+        const grupos = [
+            // nombre, deporte, nivel, día, inicio, fin, profesor (0 o 1), precio, cupo
+            ['Fútbol Primario · lunes 16:00', 'Fútbol', 'Primario', 1, '16:00', '17:30', 0, 6000, 20],
+            ['Fútbol Secundario · miércoles 17:00', 'Fútbol', 'Secundario', 3, '17:00', '18:30', 0, 6000, 20],
+            ['Natación Primario · martes 15:00', 'Natación', 'Primario', 2, '15:00', '16:00', 1, 9000, 15],
+            ['Vóley Secundario · jueves 16:00', 'Vóley', 'Secundario', 4, '16:00', '17:30', 1, 5000, 15],
+            ['Básquet Primario · viernes 16:00', 'Básquet', 'Primario', 5, '16:00', '17:30', 0, 5500, 15],
+        ];
+        for (const [nombre, deporte, nivel, dia, inicio, fin, docente, precio, cupo] of grupos) {
+            const actividad = await una("SELECT id FROM actividades_extra WHERE nombre = $1 AND tipo = 'Deporte' ORDER BY id LIMIT 1", [deporte]);
+            const niv = await una('SELECT id FROM niveles WHERE nombre = $1', [nivel]);
+            if (!actividad || !niv) continue;
+            await db.query(
+                `INSERT INTO servicios (tipo, nombre, precio_mensual, cupo_max, actividad_id, nivel_id, docente_id, dia_semana, hora_inicio, hora_fin)
+                 VALUES ('Deporte', $1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (tipo, nombre) DO NOTHING`,
+                [nombre, precio, cupo, actividad.id, niv.id, docentes[docente % docentes.length], dia, inicio, fin]
+            );
+        }
+        // Los deportes del catálogo anterior no tenían profesor, nivel ni horario: se retiran de la oferta.
+        await db.query("UPDATE servicios SET activo = FALSE WHERE tipo = 'Deporte' AND docente_id IS NULL");
+    }
+
+    // Un servicio de transporte por recorrido, y el comedor
+    for (const [nombre] of recorridos) {
+        const ruta = await una('SELECT id FROM transporte_rutas WHERE nombre_ruta = $1 ORDER BY id LIMIT 1', [nombre]);
+        if (!ruta) continue;
+        await db.query(
+            `INSERT INTO servicios (tipo, nombre, precio_mensual, cupo_max, ruta_id)
+             VALUES ('Transporte', $1, 12000, 18, $2) ON CONFLICT (tipo, nombre) DO NOTHING`,
+            [nombre, ruta.id]
+        );
+    }
+    await db.query(
+        `INSERT INTO servicios (tipo, nombre, precio_mensual) VALUES ('Comedor', 'Comedor mensual', 25000)
+         ON CONFLICT (tipo, nombre) DO NOTHING`
+    );
     console.log('Catálogo de servicios creado.');
 }
 

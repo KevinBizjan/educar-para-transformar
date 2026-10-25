@@ -20,6 +20,64 @@ describe('API Educar para Transformar', { skip }, () => {
     let seq = 0;
     const dniUnico = () => String(Date.now()).slice(-7) + String(++seq).padStart(2, '0');
 
+    // --- Datos de apoyo para crear grupos de deporte y servicios de transporte en las pruebas ---
+    // Cada grupo lleva su propio deporte, un día y un horario distintos, para no chocar entre sí.
+    const apoyo = { docente: null, docente2: null, nivel: null, nivel2: null, rutas: [], rutasTemporales: [], actividades: [], docentes: [] };
+    let contadorGrupos = 0;
+
+    const nuevoDocente = async (apellido, extra = {}) => {
+        const campos = { tipo: 'Docente', estado: 'Activo', ...extra };
+        const id = (await db.query(
+            'INSERT INTO personal (nombre, apellido, dni, tipo, estado) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+            ['Prof', `${apellido} ${Date.now()}`, dniUnico(), campos.tipo, campos.estado]
+        )).rows[0].id;
+        apoyo.docentes.push(id);
+        return id;
+    };
+    const nuevaActividad = async (tipo = 'Deporte') => {
+        const id = (await db.query(
+            "INSERT INTO actividades_extra (nombre, tipo, horario, cupo_max) VALUES ($1, $2, 'x', 30) RETURNING id",
+            [`PruebaDep-${Date.now()}-${++seq}`, tipo]
+        )).rows[0].id;
+        apoyo.actividades.push(id);
+        return id;
+    };
+    // Datos completos de un grupo de deporte nuevo (cada uno en su propio día u hora)
+    const datosGrupo = async (extra = {}) => {
+        const i = contadorGrupos++;
+        const turnos = [['16:00', '17:00'], ['18:00', '19:00'], ['20:00', '21:00']];
+        const [inicio, fin] = turnos[Math.floor(i / 7) % turnos.length];
+        return {
+            actividad_id: await nuevaActividad(),
+            docente_id: apoyo.docente,
+            nivel_id: apoyo.nivel,
+            dia_semana: (i % 7) + 1,
+            hora_inicio: inicio,
+            hora_fin: fin,
+            ...extra,
+        };
+    };
+    // Recorridos disponibles: los de la base y, si faltan, algunos temporales (sin pasar de cuatro)
+    const prepararApoyo = async () => {
+        apoyo.docente = await nuevoDocente('Uno');
+        apoyo.docente2 = await nuevoDocente('Dos');
+        const niveles = (await db.query('SELECT id FROM niveles ORDER BY id LIMIT 2')).rows.map(n => n.id);
+        [apoyo.nivel, apoyo.nivel2] = niveles;
+        apoyo.rutas = (await db.query('SELECT id FROM transporte_rutas ORDER BY id LIMIT 4')).rows.map(r => r.id);
+        while (apoyo.rutas.length < 3) {
+            const id = (await db.query(
+                "INSERT INTO transporte_rutas (nombre_ruta, chofer_nombre, capacidad_max) VALUES ($1, 'Prueba', 10) RETURNING id", [`RutaPrueba-${Date.now()}-${++seq}`]
+            )).rows[0].id;
+            apoyo.rutasTemporales.push(id);
+            apoyo.rutas.push(id);
+        }
+    };
+    const limpiarApoyo = async () => {
+        if (apoyo.actividades.length) await db.query('DELETE FROM actividades_extra WHERE id = ANY($1)', [apoyo.actividades]);
+        if (apoyo.docentes.length) await db.query('DELETE FROM personal WHERE id = ANY($1)', [apoyo.docentes]);
+        if (apoyo.rutasTemporales.length) await db.query('DELETE FROM transporte_rutas WHERE id = ANY($1)', [apoyo.rutasTemporales]);
+    };
+
     async function http(method, path, { token, body } = {}) {
         const res = await fetch(base + path, {
             method,
@@ -55,9 +113,11 @@ describe('API Educar para Transformar', { skip }, () => {
         for (const [u, p] of [['admin', 'admin123'], ['docente', 'docente123'], ['alumno', 'alumno123'], ['padre', 'padre123']]) {
             await login(u, p);
         }
+        await prepararApoyo();
     });
 
     after(async () => {
+        await limpiarApoyo();
         if (server) await new Promise(resolve => server.close(resolve));
         if (db) await db.end();
     });
@@ -452,8 +512,10 @@ describe('API Educar para Transformar', { skip }, () => {
             api('POST', '/api/inscripciones', { token, body: { alumno_id, servicio_id, mes, anio } });
         const baja = (token, id) => api('DELETE', `/api/inscripciones/${id}`, { token });
         const crearServicio = async (clave, tipo, extra = {}) => {
+            const propios = tipo === 'Deporte' ? await datosGrupo()
+                : tipo === 'Transporte' ? { ruta_id: apoyo.rutas[clave === 'T2' ? 1 : 0] } : {};
             const r = await api('POST', '/api/inscripciones/servicios', {
-                token: tokens.admin, body: { tipo, nombre: `HU4-${clave}-${sufijo}`, precio_mensual: 1000, ...extra }
+                token: tokens.admin, body: { tipo, nombre: `HU4-${clave}-${sufijo}`, precio_mensual: 1000, ...propios, ...extra }
             });
             assert.equal(r.status, 201, JSON.stringify(r.data));
             S[clave] = r.data.id;
@@ -643,7 +705,7 @@ describe('API Educar para Transformar', { skip }, () => {
             assert.equal((await nuevo({ tipo: 'Deporte', nombre: 'X', precio_mensual: 0 })).status, 400);
             assert.equal((await nuevo({ tipo: 'Deporte', nombre: 'X', precio_mensual: 100, cupo_max: 0 })).status, 400);
             assert.equal((await nuevo({ tipo: 'Transporte', nombre: `HU4-Ruta-${sufijo}`, precio_mensual: 100, ruta_id: 2147483000 })).status, 400);
-            const dup = await nuevo({ tipo: 'Deporte', nombre: `HU4-D1-${sufijo}`, precio_mensual: 100 });
+            const dup = await nuevo({ tipo: 'Deporte', nombre: `HU4-D1-${sufijo}`, precio_mensual: 100, ...(await datosGrupo({ docente_id: apoyo.docente2 })) });
             assert.equal(dup.status, 409);
 
             const patch = (body, id = S.D5, token = tokens.admin) => api('PATCH', `/api/inscripciones/servicios/${id}`, { token, body });
@@ -684,8 +746,9 @@ describe('API Educar para Transformar', { skip }, () => {
              VALUES ($1, $2, $3, '2015-05-05', $4) RETURNING id`, [nombre, apellido, dniUnico(), padre.id]
         )).rows[0].id;
         const crearServicio = async (clave, tipo, precio) => {
+            const propios = tipo === 'Deporte' ? await datosGrupo() : tipo === 'Transporte' ? { ruta_id: apoyo.rutas[0] } : {};
             const r = await api('POST', '/api/inscripciones/servicios', {
-                token: tokens.admin, body: { tipo, nombre: `HU5-${clave}-${sufijo}`, precio_mensual: precio }
+                token: tokens.admin, body: { tipo, nombre: `HU5-${clave}-${sufijo}`, precio_mensual: precio, ...propios }
             });
             assert.equal(r.status, 201);
             S[clave] = r.data.id;
@@ -812,6 +875,198 @@ describe('API Educar para Transformar', { skip }, () => {
             const ana = r.data.hijos.find(h => h.id === hijoC1);
             assert.equal(ana.nivel, null);
             assert.equal(ana.division, null);
+        });
+    });
+
+    describe('Deportes por grupo, horarios y recorridos', () => {
+        const sufijo = Date.now();
+        const PASS = 'Inicial1!x';
+        const MES = 6;
+        const ANIO = 2042;
+        let P;                          // un padre con alumnos de prueba
+        const alumnos = [];
+        const cursos = [];
+        const grupos = [];
+
+        const crear = (body, token = tokens.admin) => api('POST', '/api/inscripciones/servicios', {
+            token, body: { tipo: 'Deporte', precio_mensual: 1000, ...body }
+        });
+        const nuevoGrupo = async (extra = {}) => {
+            const datos = await datosGrupo(extra);
+            const r = await crear({ nombre: `DG-${sufijo}-${grupos.length}`, ...datos });
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            grupos.push(r.data.id);
+            return { id: r.data.id, ...datos };
+        };
+        const nuevoAlumno = async (cursoId = null) => {
+            const id = (await db.query(
+                `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, tutor_id, curso_id)
+                 VALUES ('Dep', 'Grupos', $1, '2015-05-05', $2, $3) RETURNING id`, [dniUnico(), P.id, cursoId]
+            )).rows[0].id;
+            alumnos.push(id);
+            return id;
+        };
+        const inscribir = (alumno_id, servicio_id) => api('POST', '/api/inscripciones', {
+            token: P.token, body: { alumno_id, servicio_id, mes: MES, anio: ANIO }
+        });
+
+        before(async () => {
+            const username = `dg-${sufijo}`;
+            const r = await api('POST', '/api/auth/users', {
+                token: tokens.admin, body: { nombre: 'Padre Deportes', username, password: PASS, rol: 'padre' }
+            });
+            assert.equal(r.status, 201);
+            const l = await api('POST', '/api/auth/login', { body: { username, password: PASS } });
+            P = { id: r.data.id, token: l.data.token };
+        });
+
+        after(async () => {
+            await db.query('DELETE FROM inscripciones_servicio WHERE alumno_id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM servicios WHERE nombre LIKE $1', [`DG-${sufijo}-%`]);
+            await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnos]);
+            if (cursos.length) await db.query('DELETE FROM cursos WHERE id = ANY($1)', [cursos]);
+            await api('DELETE', `/api/auth/users/${P.id}`, { token: tokens.admin });
+        });
+
+        it('un grupo de deporte exige deporte, profesor, nivel y un horario válido', async () => {
+            const base = await datosGrupo();
+            const probar = async (cambios, esperado = 400) => {
+                const r = await crear({ nombre: `DG-${sufijo}-x`, ...base, ...cambios });
+                assert.equal(r.status, esperado, `${JSON.stringify(cambios)} -> ${JSON.stringify(r.data)}`);
+            };
+            await probar({ actividad_id: undefined });
+            await probar({ docente_id: undefined });
+            await probar({ nivel_id: undefined });
+            await probar({ dia_semana: 8 });
+            await probar({ dia_semana: undefined });
+            await probar({ hora_inicio: '9:00' });
+            await probar({ hora_inicio: '17:00', hora_fin: '16:00' });
+            await probar({ hora_inicio: '16:00', hora_fin: '16:00' });
+            await probar({ nivel_id: 2147483000 });
+            await probar({ docente_id: 2147483000 });
+            await probar({ actividad_id: await nuevaActividad('Idioma') });
+            await probar({ docente_id: await nuevoDocente('Admin', { tipo: 'Administrativo' }) });
+            await probar({ docente_id: await nuevoDocente('Inactivo', { estado: 'Inactivo' }) });
+        });
+
+        it('el catálogo muestra el deporte, el nivel, el profesor y el horario de cada grupo', async () => {
+            const g = await nuevoGrupo({ hora_inicio: '16:30', hora_fin: '17:45' });
+            const cat = await api('GET', `/api/inscripciones/catalogo?mes=${MES}&anio=${ANIO}`, { token: P.token });
+            const fila = cat.data.servicios.find(s => s.id === g.id);
+            assert.ok(fila.deporte.startsWith('PruebaDep'));
+            assert.ok(fila.nivel);
+            assert.match(fila.docente, /^Prof Uno/);
+            assert.equal(fila.dia_semana, g.dia_semana);
+            assert.equal(fila.hora_inicio, '16:30');
+            assert.equal(fila.hora_fin, '17:45');
+        });
+
+        it('un profesor no puede tener dos grupos a la misma hora, pero sí uno a continuación del otro', async () => {
+            const a = await nuevoGrupo({ dia_semana: 2, hora_inicio: '10:00', hora_fin: '11:00' });
+            const choque = await crear({ nombre: `DG-${sufijo}-choque`, ...(await datosGrupo({ docente_id: a.docente_id, dia_semana: 2, hora_inicio: '10:30', hora_fin: '11:30' })) });
+            assert.equal(choque.status, 409);
+            assert.match(choque.data.message, /ya tiene el grupo/);
+            await nuevoGrupo({ dia_semana: 2, hora_inicio: '11:00', hora_fin: '12:00' });  // contiguo: se permite
+            await nuevoGrupo({ dia_semana: 3, hora_inicio: '10:30', hora_fin: '11:30' });  // otro día: se permite
+        });
+
+        it('el alumno no puede anotarse en dos deportes cuyo horario se pisa', async () => {
+            const alumno = await nuevoAlumno();
+            const g1 = await nuevoGrupo({ docente_id: apoyo.docente, dia_semana: 4, hora_inicio: '13:00', hora_fin: '14:00' });
+            const g2 = await nuevoGrupo({ docente_id: apoyo.docente2, dia_semana: 4, hora_inicio: '13:30', hora_fin: '14:30' });
+            const g3 = await nuevoGrupo({ dia_semana: 4, hora_inicio: '14:00', hora_fin: '15:00' });
+            assert.equal((await inscribir(alumno, g1.id)).status, 201);
+            const choque = await inscribir(alumno, g2.id);
+            assert.equal(choque.status, 409);
+            assert.match(choque.data.message, /se superpone/);
+            assert.equal((await inscribir(alumno, g3.id)).status, 201, 'a continuación del otro se permite');
+        });
+
+        it('el alumno no puede anotarse dos veces en el mismo deporte (en otro grupo)', async () => {
+            const alumno = await nuevoAlumno();
+            const actividad = await nuevaActividad();
+            const g1 = await nuevoGrupo({ actividad_id: actividad, dia_semana: 5, hora_inicio: '09:00', hora_fin: '10:00' });
+            const g2 = await nuevoGrupo({ actividad_id: actividad, dia_semana: 6, hora_inicio: '09:00', hora_fin: '10:00' });
+            assert.equal((await inscribir(alumno, g1.id)).status, 201);
+            const otro = await inscribir(alumno, g2.id);
+            assert.equal(otro.status, 409);
+            assert.match(otro.data.message, /este deporte/);
+        });
+
+        it('el grupo es para un nivel: se controla contra el curso del alumno', async () => {
+            const curso = (await db.query(
+                "INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, 'ZZ', 30) RETURNING id", [apoyo.nivel]
+            )).rows[0].id;
+            cursos.push(curso);
+            const delNivel = await nuevoAlumno(curso);
+            const sinCurso = await nuevoAlumno();
+            const grupoMismoNivel = await nuevoGrupo({ nivel_id: apoyo.nivel, dia_semana: 7, hora_inicio: '09:00', hora_fin: '10:00' });
+            const grupoOtroNivel = await nuevoGrupo({ nivel_id: apoyo.nivel2, dia_semana: 7, hora_inicio: '10:00', hora_fin: '11:00', docente_id: apoyo.docente2 });
+
+            assert.equal((await inscribir(delNivel, grupoMismoNivel.id)).status, 201);
+            const otroNivel = await inscribir(delNivel, grupoOtroNivel.id);
+            assert.equal(otroNivel.status, 409);
+            assert.match(otroNivel.data.message, /nivel/);
+            assert.equal((await inscribir(sinCurso, grupoOtroNivel.id)).status, 201, 'sin curso asignado no se puede comparar');
+        });
+
+        it('se puede cambiar el profesor a cargo de un grupo, sin pisar sus otros horarios', async () => {
+            const g = await nuevoGrupo({ dia_semana: 1, hora_inicio: '07:00', hora_fin: '08:00' });
+            const ocupado = await nuevoGrupo({ docente_id: apoyo.docente2, dia_semana: 1, hora_inicio: '07:30', hora_fin: '08:30' });
+            const cambiar = (id, body) => api('PATCH', `/api/inscripciones/servicios/${id}`, { token: tokens.admin, body });
+
+            const choque = await cambiar(g.id, { docente_id: apoyo.docente2 });
+            assert.equal(choque.status, 409);
+            assert.match(choque.data.message, new RegExp(`DG-${sufijo}`));
+            assert.equal((await cambiar(g.id, { docente_id: 2147483000 })).status, 400);
+            assert.equal((await cambiar(g.id, { docente_id: null })).status, 400);
+
+            const libre = await nuevoDocente('Libre');
+            assert.equal((await cambiar(g.id, { docente_id: libre })).status, 200);
+            const fila = (await db.query('SELECT docente_id FROM servicios WHERE id = $1', [g.id])).rows[0];
+            assert.equal(fila.docente_id, libre);
+            assert.ok(ocupado.id);
+        });
+
+        it('solo los grupos de deporte tienen profesor', async () => {
+            const comedor = await api('POST', '/api/inscripciones/servicios', {
+                token: tokens.admin, body: { tipo: 'Comedor', nombre: `DG-${sufijo}-comedor`, precio_mensual: 100 }
+            });
+            assert.equal(comedor.status, 201);
+            grupos.push(comedor.data.id);
+            const r = await api('PATCH', `/api/inscripciones/servicios/${comedor.data.id}`, { token: tokens.admin, body: { docente_id: apoyo.docente } });
+            assert.equal(r.status, 400);
+        });
+
+        it('un servicio de transporte necesita un recorrido que exista', async () => {
+            const crearT = (extra) => api('POST', '/api/inscripciones/servicios', {
+                token: tokens.admin, body: { tipo: 'Transporte', nombre: `DG-${sufijo}-t`, precio_mensual: 100, ...extra }
+            });
+            assert.equal((await crearT({})).status, 400);
+            assert.equal((await crearT({ ruta_id: 2147483000 })).status, 400);
+            const ok = await crearT({ ruta_id: apoyo.rutas[0] });
+            assert.equal(ok.status, 201);
+            grupos.push(ok.data.id);
+        });
+
+        it('el servicio de transporte tiene como máximo cuatro recorridos', async () => {
+            const temporales = [];
+            try {
+                let total = (await db.query('SELECT COUNT(*)::int AS n FROM transporte_rutas')).rows[0].n;
+                while (total < 4) {
+                    temporales.push((await db.query(
+                        "INSERT INTO transporte_rutas (nombre_ruta, chofer_nombre, capacidad_max) VALUES ($1, 'Prueba', 10) RETURNING id", [`Tope-${Date.now()}-${++seq}`]
+                    )).rows[0].id);
+                    total++;
+                }
+                const quinta = await api('POST', '/api/servicios/transporte/rutas', {
+                    token: tokens.admin, body: { nombre: 'Ruta de más', chofer: 'X', capacidad: 10 }
+                });
+                assert.equal(quinta.status, 409);
+                assert.match(quinta.data.message, /máximo 4 recorridos/);
+            } finally {
+                if (temporales.length) await db.query('DELETE FROM transporte_rutas WHERE id = ANY($1)', [temporales]);
+            }
         });
     });
 });
