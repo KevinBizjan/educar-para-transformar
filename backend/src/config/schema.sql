@@ -252,6 +252,15 @@ ALTER TABLE personal ADD COLUMN IF NOT EXISTS estado TEXT DEFAULT 'Activo';
 ALTER TABLE personal DROP CONSTRAINT IF EXISTS personal_estado_check;
 ALTER TABLE personal ADD CONSTRAINT personal_estado_check CHECK (estado IN ('Activo', 'Inactivo', 'Licencia'));
 
+-- --- Vínculo entre cuentas de usuario y legajos (ARTE-2, Sprint C) ---
+-- Hasta ahora una cuenta con rol docente/alumno no estaba asociada a ningún legajo, por lo que un
+-- docente veía a todos los alumnos. user_id enlaza la cuenta con su legajo; es opcional (NULL = sin
+-- vincular) y único: una cuenta pertenece a una sola persona y una persona tiene una sola cuenta.
+ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE personal ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS alumnos_user_id_uk ON alumnos (user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS personal_user_id_uk ON personal (user_id) WHERE user_id IS NOT NULL;
+
 -- --- Asistencia por materia: un solo registro por alumno, día y materia (HU1) ---
 -- materia_id es opcional: NULL = asistencia general del día (sin materia).
 -- El índice trata NULL como una materia más (COALESCE) porque, de otro modo,

@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ConfirmModal from '../components/ConfirmModal';
 import ReportesListados from '../components/ReportesListados';
+import VinculosCuentas from '../components/VinculosCuentas';
 
 import { esNombreValido } from '../utils/validators';
 
@@ -1794,6 +1795,7 @@ const AdminDashboard = () => {
                     </table>
                 </div>
             )}
+            {activeTab === 'usuarios' && <VinculosCuentas />}
 
             {activeTab === 'comunicados' && (
                 <div style={{ background: 'var(--white)', padding: '24px', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-sm)' }}>

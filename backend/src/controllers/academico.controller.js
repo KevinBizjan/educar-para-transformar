@@ -1,6 +1,7 @@
 const db = require('../config/database');
 
 const { NOMBRE_REGEX, esNombreValido, esEmailValido } = require('../utils/validators');
+const { docenteDeCuenta } = require('../services/vinculos.service');
 
 const ESTADOS_ALUMNO = ['Activo', 'Inactivo', 'Egresado'];
 
@@ -116,15 +117,28 @@ exports.createCurso = async (req, res) => {
 };
 
 // --- ALUMNOS (Legajos) ---
+// Un docente con la cuenta vinculada a su legajo solo ve a los alumnos de los cursos donde dicta clase
+// (según los horarios cargados). Si la cuenta aún no está vinculada se mantiene la lista completa,
+// para no dejar sin pantalla a quien todavía no fue asociado por la Dirección.
 exports.getAlumnos = async (req, res) => {
-    const query = `
-        SELECT alumnos.*, cursos.division, niveles.nombre as nivel_nombre
-        FROM alumnos
-        LEFT JOIN cursos ON alumnos.curso_id = cursos.id
-        LEFT JOIN niveles ON cursos.nivel_id = niveles.id
-    `;
+    let filtro = '';
+    const params = [];
     try {
-        const result = await db.query(query);
+        if (req.user.rol === 'docente') {
+            const docenteId = await docenteDeCuenta(req.user.id);
+            if (docenteId) {
+                filtro = `WHERE alumnos.curso_id IN (
+                    SELECT m.curso_id FROM horarios h JOIN materias m ON m.id = h.materia_id WHERE h.docente_id = $1)`;
+                params.push(docenteId);
+            }
+        }
+        const result = await db.query(`
+            SELECT alumnos.*, cursos.division, niveles.nombre as nivel_nombre
+            FROM alumnos
+            LEFT JOIN cursos ON alumnos.curso_id = cursos.id
+            LEFT JOIN niveles ON cursos.nivel_id = niveles.id
+            ${filtro}
+        `, params);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -219,16 +233,26 @@ exports.updateAlumno = async (req, res) => {
 // --- MATERIAS ---
 // Devuelve las materias con el curso al que pertenecen (nivel y división).
 // Se agregan campos extra por JOIN; los existentes (id, nombre, curso_id) se mantienen.
+// Igual que con los alumnos: un docente vinculado ve solo las materias que dicta.
 exports.getMaterias = async (req, res) => {
-    const query = `
-        SELECT materias.*, niveles.nombre as nivel_nombre, cursos.division
-        FROM materias
-        LEFT JOIN cursos ON materias.curso_id = cursos.id
-        LEFT JOIN niveles ON cursos.nivel_id = niveles.id
-        ORDER BY niveles.nombre, cursos.division, materias.nombre
-    `;
+    let filtro = '';
+    const params = [];
     try {
-        const result = await db.query(query);
+        if (req.user.rol === 'docente') {
+            const docenteId = await docenteDeCuenta(req.user.id);
+            if (docenteId) {
+                filtro = 'WHERE materias.id IN (SELECT h.materia_id FROM horarios h WHERE h.docente_id = $1)';
+                params.push(docenteId);
+            }
+        }
+        const result = await db.query(`
+            SELECT materias.*, niveles.nombre as nivel_nombre, cursos.division
+            FROM materias
+            LEFT JOIN cursos ON materias.curso_id = cursos.id
+            LEFT JOIN niveles ON cursos.nivel_id = niveles.id
+            ${filtro}
+            ORDER BY niveles.nombre, cursos.division, materias.nombre
+        `, params);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ message: err.message });

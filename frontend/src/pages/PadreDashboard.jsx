@@ -2,6 +2,7 @@ import { API_URL } from '../config';
 import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import ConfirmModal from '../components/ConfirmModal';
+import FichaHijos from '../components/FichaHijos';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -415,6 +416,8 @@ const PadreDashboard = () => {
                         )}
                     </div>
                 </div>
+
+                <FichaHijos hijos={hijosReales} onCambio={fetchHijosYSaldos} />
 
                 {/* Calendario de Pagos / Comedor */}
                 <div className="dashboard-card" style={cardStyle}>

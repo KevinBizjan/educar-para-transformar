@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_URL } from '../config';
 import { useAuth } from '../context/AuthContext';
+import SeccionesReporte from './SeccionesReporte';
 
 // Los 9 reportes de la Dirección. La lista de reportes y de filtros viene del backend (GET /api/reportes),
 // así que esta pantalla muestra cualquiera de ellos con el mismo componente: filtros, tabla y descarga en CSV.
 
 const MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
-const thStyle = { padding: '12px 14px', fontSize: '0.75rem', color: '#64748b', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', textAlign: 'left', whiteSpace: 'nowrap' };
-const tdStyle = { padding: '12px 14px', fontSize: '0.88rem', verticalAlign: 'top', borderTop: '1px solid #f1f5f9' };
 const campoStyle = { padding: '9px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '0.88rem', background: '#fff', minWidth: '180px', maxWidth: '100%' };
 const etiquetaStyle = { display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' };
 
@@ -144,8 +143,6 @@ export default function ReportesListados() {
         }
     };
 
-    const celda = (valor) => (valor === null || valor === undefined || valor === '' ? '-' : String(valor));
-
     return (
         <div style={{ background: 'var(--white)', padding: '24px', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-sm)', marginTop: '24px' }}>
             <h2 style={{ fontSize: '1.1rem', color: 'var(--blue)', fontWeight: 800, marginBottom: '6px' }}>📊 Reportes de la Dirección</h2>
@@ -210,33 +207,7 @@ export default function ReportesListados() {
                     <h3 style={{ fontSize: '1rem', color: 'var(--text)', fontWeight: 800, marginBottom: '4px' }}>{resultado.titulo}</h3>
                     <p style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '14px' }}>Generado el {new Date(resultado.generado_en).toLocaleString('es-AR')}</p>
 
-                    {resultado.secciones.map((sec) => (
-                        <div key={sec.titulo} style={{ marginBottom: '22px' }}>
-                            {(resultado.secciones.length > 1 || sec.total > 0) && (
-                                <h4 style={{ fontSize: '0.85rem', color: 'var(--blue)', fontWeight: 800, marginBottom: '8px' }}>
-                                    {sec.titulo} <span style={{ color: '#94a3b8', fontWeight: 600 }}>· {sec.total} {sec.total === 1 ? 'fila' : 'filas'}</span>
-                                </h4>
-                            )}
-                            {sec.total === 0 ? (
-                                <p style={{ fontSize: '0.85rem', color: '#64748b', padding: '14px', background: '#f8fafc', borderRadius: '8px' }}>
-                                    {resultado.secciones.length > 1 ? `${sec.titulo}: sin datos.` : 'No hay resultados para estos filtros.'}
-                                </p>
-                            ) : (
-                                <div style={{ overflowX: 'auto', border: '1px solid #f1f5f9', borderRadius: '10px' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                        <thead style={{ background: '#f8fafc' }}>
-                                            <tr>{sec.columnas.map((c) => <th key={c.clave} style={thStyle}>{c.titulo}</th>)}</tr>
-                                        </thead>
-                                        <tbody>
-                                            {sec.filas.map((fila, i) => (
-                                                <tr key={i}>{sec.columnas.map((c) => <td key={c.clave} style={tdStyle}>{celda(fila[c.clave])}</td>)}</tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                    <SeccionesReporte secciones={resultado.secciones} />
                 </div>
             )}
         </div>
