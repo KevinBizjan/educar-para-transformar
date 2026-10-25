@@ -101,6 +101,15 @@ En el panel del administrador, pestaña **Reportes**, están los 9 listados que 
 * Las listas incluyen solo alumnos activos. Los profesores por materia salen de los **Horarios** cargados en Gestión Académica.
 * API: `GET /api/reportes` (catálogo) y `GET /api/reportes/<reporte>`; con `?formato=csv` se descarga el archivo. Solo el administrador tiene acceso.
 
+## 🔗 Cuentas vinculadas y vistas por rol
+
+Una cuenta con rol **docente** o **alumno** se asocia a su legajo para que cada persona vea solo lo suyo. El administrador lo hace en la pestaña **Usuarios y Roles → Vincular cuentas con legajos**: una cuenta por persona y una persona por cuenta.
+
+* **Docente:** con la cuenta vinculada ve la tarjeta **Mis cursos y horarios** (cursos por nivel y horario de cada materia) y solo a los alumnos y materias de sus cursos. Mientras la cuenta no esté vinculada mantiene la vista completa, para no dejar sin pantalla a quien todavía no fue asociado.
+* **Padre:** en **Ficha de mi hijo/a** ve las materias con su profesor, los deportes con horario y profesor, el transporte y el comedor del mes elegido. Si el hijo todavía no tiene curso, puede **inscribirlo al cursado** en un curso con vacantes; cambiar un curso ya asignado lo decide la Dirección.
+* API: `GET /api/vinculos` y `PUT /api/vinculos/{alumnos|docentes}/:id` (administrador); `GET /api/academico/mis-cursos` (docente); `GET /api/academico/mis-hijos/:id/ficha`, `GET /api/academico/cursos-disponibles` y `POST /api/academico/mis-hijos/:id/inscribir-curso` (padre).
+* Los profesores por materia salen de los **Horarios** cargados en Gestión Académica, igual que en los reportes.
+
 ## 🔁 Integración continua y flujo de trabajo
 
 **Flujo:** issue → rama → Pull Request (con `Closes #n`) → GitHub Actions → merge a `main` → Render despliega a producción.

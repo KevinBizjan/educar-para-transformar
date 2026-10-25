@@ -1325,4 +1325,268 @@ describe('API Educar para Transformar', { skip }, () => {
             assert.equal(solo.status, 403, 'el CSV tiene la misma seguridad');
         });
     });
+
+    describe('Vínculos de cuentas y vistas del portal (ARTE-2, Sprint C)', () => {
+        const tag = String(Date.now());
+        const PASS = 'Inicial1!x';
+        const F = {};
+        const cuentas = {};
+        const alumnosCreados = [];
+
+        const crearCuenta = async (clave, rol) => {
+            const username = `vc-${clave}-${tag}`;
+            const r = await api('POST', '/api/auth/users', { token: tokens.admin, body: { nombre: 'Cuenta Vinculos', username, password: PASS, rol } });
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            await login(username, PASS);
+            cuentas[clave] = { id: r.data.id, username };
+        };
+        const tk = (clave) => tokens[cuentas[clave].username];
+        const curso = async (division, cupo) => (await db.query(
+            'INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, $3) RETURNING id', [apoyo.nivel, `${division}-${tag}`, cupo])).rows[0].id;
+        const materia = async (nombre, cursoId) => (await db.query(
+            'INSERT INTO materias (nombre, curso_id) VALUES ($1, $2) RETURNING id', [`${nombre} ${tag}`, cursoId])).rows[0].id;
+        const horario = (materiaId, docenteId, dia, ini, fin) => db.query(
+            'INSERT INTO horarios (materia_id, docente_id, aula_id, dia_semana, hora_inicio, hora_fin) VALUES ($1, $2, (SELECT id FROM aulas ORDER BY id LIMIT 1), $3, $4, $5)',
+            [materiaId, docenteId, dia, ini, fin]);
+        const alumno = async (apellido, cursoId, tutor = null, estado = 'Activo') => {
+            const id = (await db.query(
+                `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, curso_id, tutor_id, estado)
+                 VALUES ('Vin', $1, $2, '2015-05-05', $3, $4, $5) RETURNING id`,
+                [apellido, dniUnico(), cursoId, tutor ? cuentas[tutor].id : null, estado])).rows[0].id;
+            alumnosCreados.push(id);
+            return id;
+        };
+        const vincular = (tipo, id, user_id, token = tokens.admin) => api('PUT', `/api/vinculos/${tipo}/${id}`, { token, body: { user_id } });
+        const cursoDeAlumno = async (id) => (await db.query('SELECT curso_id FROM alumnos WHERE id = $1', [id])).rows[0].curso_id;
+        const inscribirCurso = (alumnoId, cursoId, quien = 'pad1') => api('POST', `/api/academico/mis-hijos/${alumnoId}/inscribir-curso`, { token: tk(quien), body: { curso_id: cursoId } });
+        const titulos = (r) => r.data.secciones.map(s => s.titulo);
+
+        before(async () => {
+            for (const [clave, rol] of [['doc1', 'docente'], ['doc2', 'docente'], ['alu', 'alumno'], ['pad1', 'padre'], ['pad2', 'padre']]) {
+                await crearCuenta(clave, rol);
+            }
+            F.c1 = await curso('V1', 30);
+            F.c2 = await curso('V2', 30);
+            F.cLleno = await curso('V3', 1);
+            F.cUno = await curso('V4', 1);
+            F.m1 = await materia('Matemática', F.c1);
+            F.m2 = await materia('Lengua', F.c2);
+            F.d1 = await nuevoDocente('VincUno');
+            F.d2 = await nuevoDocente('VincDos');
+            F.dAdm = await nuevoDocente('VincAdm', { tipo: 'Administrativo' });
+            await horario(F.m1, F.d1, 1, '08:00', '09:30');
+            await horario(F.m2, F.d2, 2, '10:00', '11:00');
+
+            F.aC1 = await alumno('Aguirre', F.c1);
+            F.aC2 = await alumno('Benitez', F.c2);
+            F.aLleno = await alumno('Cabral', F.cLleno);
+            F.hijoConCurso = await alumno('Dominguez', F.c1, 'pad1');
+            F.hijoA = await alumno('Echeverria', null, 'pad1');
+            F.hijoC = await alumno('Fernandez', null, 'pad1');
+            F.hijoInactivo = await alumno('Gimenez', null, 'pad1', 'Inactivo');
+            F.hijoB = await alumno('Herrera', null, 'pad2');
+            F.carrera1 = await alumno('Ibarra', null, 'pad1');
+            F.carrera2 = await alumno('Juarez', null, 'pad2');
+        });
+
+        after(async () => {
+            await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnosCreados]);
+            await db.query('DELETE FROM horarios WHERE materia_id = ANY($1)', [[F.m1, F.m2]]);
+            await db.query('DELETE FROM materias WHERE id = ANY($1)', [[F.m1, F.m2]]);
+            await db.query('DELETE FROM cursos WHERE id = ANY($1)', [[F.c1, F.c2, F.cLleno, F.cUno]]);
+            for (const c of Object.values(cuentas)) await api('DELETE', `/api/auth/users/${c.id}`, { token: tokens.admin });
+        });
+
+        // Las pruebas siguen un orden: primero el docente sin vincular, después los vínculos y al final lo que depende de ellos.
+        it('solo el administrador gestiona los vínculos', async () => {
+            assert.equal((await api('GET', '/api/vinculos')).status, 403);
+            for (const t of [tokens.docente, tokens.padre, tokens.alumno]) {
+                assert.equal((await api('GET', '/api/vinculos', { token: t })).status, 403);
+                assert.equal((await vincular('docentes', F.d1, cuentas.doc1.id, t)).status, 403);
+                assert.equal((await vincular('alumnos', F.aC1, cuentas.alu.id, t)).status, 403);
+            }
+            assert.equal((await api('GET', '/api/vinculos', { token: tokens.admin })).status, 200);
+        });
+
+        it('un docente sin vincular no queda sin pantalla: mantiene la lista completa mientras tanto', async () => {
+            const mis = await api('GET', '/api/academico/mis-cursos', { token: tk('doc1') });
+            assert.equal(mis.status, 200);
+            assert.deepEqual(mis.data, { vinculado: false });
+            const alumnos = await api('GET', '/api/academico/alumnos', { token: tk('doc1') });
+            const ids = alumnos.data.map(a => a.id);
+            assert.ok(ids.includes(F.aC1) && ids.includes(F.aC2));
+            const materias = await api('GET', '/api/academico/materias', { token: tk('doc1') });
+            assert.ok(materias.data.some(m => m.id === F.m1) && materias.data.some(m => m.id === F.m2));
+        });
+
+        it('la lista de vínculos trae alumnos, docentes y cuentas libres', async () => {
+            const r = await api('GET', '/api/vinculos', { token: tokens.admin });
+            assert.equal(r.status, 200);
+            const alumno = r.data.alumnos.find(a => a.id === F.aC1);
+            assert.equal(alumno.user_id, null);
+            assert.equal(alumno.legajo, `A-${String(F.aC1).padStart(5, '0')}`);
+            assert.equal(r.data.docentes.find(d => d.id === F.d1).legajo, `D-${String(F.d1).padStart(5, '0')}`);
+            assert.ok(!r.data.docentes.some(d => d.id === F.dAdm), 'el personal que no es docente no aparece');
+            const libres = r.data.cuentas_libres;
+            assert.equal(libres.find(c => c.id === cuentas.doc1.id).rol, 'docente');
+            assert.equal(libres.find(c => c.id === cuentas.alu.id).rol, 'alumno');
+            assert.ok(!libres.some(c => c.id === cuentas.pad1.id), 'las cuentas de padre no se vinculan a legajos');
+        });
+
+        it('rechaza vínculos inválidos', async () => {
+            assert.equal((await vincular('docentes', F.d1, cuentas.alu.id)).status, 400, 'cuenta de alumno a un docente');
+            assert.equal((await vincular('alumnos', F.aC1, cuentas.doc1.id)).status, 400, 'cuenta de docente a un alumno');
+            assert.equal((await vincular('docentes', F.d1, cuentas.pad1.id)).status, 400, 'cuenta de padre a un docente');
+            assert.equal((await vincular('docentes', F.d1, 987654321)).status, 404, 'cuenta inexistente');
+            assert.equal((await vincular('docentes', F.d1, 'abc')).status, 400, 'identificador inválido');
+            assert.equal((await vincular('docentes', 987654321, cuentas.doc1.id)).status, 404, 'legajo inexistente');
+            assert.equal((await vincular('docentes', F.dAdm, cuentas.doc1.id)).status, 404, 'personal que no es docente');
+            assert.equal((await vincular('alumnos', 'x', cuentas.alu.id)).status, 400, 'legajo inválido');
+        });
+
+        it('vincula docentes y alumnos, y una cuenta no puede quedar en dos legajos', async () => {
+            const a = await vincular('docentes', F.d1, cuentas.doc1.id);
+            assert.equal(a.status, 200);
+            assert.equal(a.data.username, cuentas.doc1.username);
+            assert.equal((await vincular('docentes', F.d2, cuentas.doc1.id)).status, 409, 'la cuenta ya es de otro docente');
+            assert.equal((await vincular('docentes', F.d2, cuentas.doc2.id)).status, 200);
+            assert.equal((await vincular('alumnos', F.aC1, cuentas.alu.id)).status, 200);
+
+            const lista = await api('GET', '/api/vinculos', { token: tokens.admin });
+            assert.equal(lista.data.docentes.find(d => d.id === F.d1).user_id, cuentas.doc1.id);
+            assert.equal(lista.data.alumnos.find(x => x.id === F.aC1).username, cuentas.alu.username);
+            assert.ok(!lista.data.cuentas_libres.some(c => [cuentas.doc1.id, cuentas.doc2.id, cuentas.alu.id].includes(c.id)), 'ya no están libres');
+        });
+
+        it('desvincular libera la cuenta para asignarla de nuevo', async () => {
+            const baja = await vincular('docentes', F.d1, null);
+            assert.equal(baja.status, 200);
+            assert.equal(baja.data.user_id, null);
+            const libres = (await api('GET', '/api/vinculos', { token: tokens.admin })).data.cuentas_libres;
+            assert.ok(libres.some(c => c.id === cuentas.doc1.id));
+            assert.deepEqual((await api('GET', '/api/academico/mis-cursos', { token: tk('doc1') })).data, { vinculado: false });
+            assert.equal((await vincular('docentes', F.d1, cuentas.doc1.id)).status, 200);
+        });
+
+        it('el docente vinculado ve sus cursos y horarios, y solo los suyos', async () => {
+            const r = await api('GET', '/api/academico/mis-cursos', { token: tk('doc1') });
+            assert.equal(r.status, 200);
+            assert.equal(r.data.vinculado, true);
+            const ficha = r.data.ficha;
+            assert.ok(ficha.titulo.startsWith('Reporte del docente: '));
+            const cursosACargo = ficha.secciones[1].filas;
+            assert.deepEqual(cursosACargo.map(c => c.curso), [`V1-${tag}`]);
+            const horarios = ficha.secciones[2].filas;
+            assert.equal(horarios.length, 1);
+            assert.equal(horarios[0].materia, `Matemática ${tag}`);
+            assert.equal(horarios[0].dia, 'Lunes');
+
+            const otro = await api('GET', '/api/academico/mis-cursos', { token: tk('doc2') });
+            assert.deepEqual(otro.data.ficha.secciones[1].filas.map(c => c.curso), [`V2-${tag}`]);
+        });
+
+        it('el docente vinculado solo lista a los alumnos y las materias de sus cursos', async () => {
+            const alumnos = (await api('GET', '/api/academico/alumnos', { token: tk('doc1') })).data.map(a => a.id);
+            assert.ok(alumnos.includes(F.aC1) && alumnos.includes(F.hijoConCurso), 've a los de su curso');
+            assert.ok(!alumnos.includes(F.aC2) && !alumnos.includes(F.aLleno), 'no ve a los de otros cursos');
+            const materias = (await api('GET', '/api/academico/materias', { token: tk('doc1') })).data.filter(m => m.nombre.endsWith(tag));
+            assert.deepEqual(materias.map(m => m.id), [F.m1]);
+
+            const alumnos2 = (await api('GET', '/api/academico/alumnos', { token: tk('doc2') })).data.map(a => a.id);
+            assert.ok(alumnos2.includes(F.aC2) && !alumnos2.includes(F.aC1));
+            // El administrador sigue viendo todo
+            const todos = (await api('GET', '/api/academico/alumnos', { token: tokens.admin })).data.map(a => a.id);
+            assert.ok(todos.includes(F.aC1) && todos.includes(F.aC2) && todos.includes(F.aLleno));
+        });
+
+        it('"mis cursos" es solo para docentes', async () => {
+            assert.equal((await api('GET', '/api/academico/mis-cursos')).status, 403);
+            for (const t of [tokens.admin, tokens.padre, tokens.alumno]) {
+                assert.equal((await api('GET', '/api/academico/mis-cursos', { token: t })).status, 403);
+            }
+        });
+
+        it('el padre ve la ficha de su hijo: materias con profesor, deportes, transporte y comedor', async () => {
+            const r = await api('GET', `/api/academico/mis-hijos/${F.hijoConCurso}/ficha`, { token: tk('pad1') });
+            assert.equal(r.status, 200);
+            assert.ok(titulos(r)[0] === 'Datos del alumno');
+            assert.ok(titulos(r).includes('Materias y profesores'));
+            assert.ok(titulos(r).some(t => t.startsWith('Deportes y horarios')));
+            assert.ok(titulos(r).includes('Transporte'));
+            assert.ok(titulos(r).some(t => t.startsWith('Comedor')));
+            const materias = r.data.secciones[1].filas;
+            const mat = materias.find(m => m.materia === `Matemática ${tag}`);
+            assert.ok(mat.profesor.includes('VincUno'), 'muestra al profesor de la materia');
+        });
+
+        it('el padre no ve la ficha de hijos ajenos y valida los datos del pedido', async () => {
+            assert.equal((await api('GET', `/api/academico/mis-hijos/${F.hijoB}/ficha`, { token: tk('pad1') })).status, 403);
+            assert.equal((await api('GET', `/api/academico/mis-hijos/${F.aC1}/ficha`, { token: tk('pad1') })).status, 403, 'alumno sin tutor');
+            assert.equal((await api('GET', '/api/academico/mis-hijos/abc/ficha', { token: tk('pad1') })).status, 400);
+            assert.equal((await api('GET', `/api/academico/mis-hijos/${F.hijoConCurso}/ficha?mes=13&anio=2026`, { token: tk('pad1') })).status, 400);
+            assert.equal((await api('GET', `/api/academico/mis-hijos/${F.hijoConCurso}/ficha?mes=5&anio=2026`, { token: tk('pad1') })).status, 200);
+            for (const t of [tokens.docente, tokens.alumno, tokens.admin]) {
+                assert.equal((await api('GET', `/api/academico/mis-hijos/${F.hijoConCurso}/ficha`, { token: t })).status, 403);
+            }
+        });
+
+        it('lista los cursos con sus vacantes, solo para padres', async () => {
+            const r = await api('GET', '/api/academico/cursos-disponibles', { token: tk('pad1') });
+            assert.equal(r.status, 200);
+            const lleno = r.data.find(c => c.id === F.cLleno);
+            const uno = r.data.find(c => c.id === F.cUno);
+            assert.equal(lleno.vacantes, 0);
+            assert.equal(uno.vacantes, 1);
+            assert.equal(uno.cupo, 1);
+            assert.ok(uno.nivel_nombre);
+            for (const t of [tokens.docente, tokens.alumno]) {
+                assert.equal((await api('GET', '/api/academico/cursos-disponibles', { token: t })).status, 403);
+            }
+        });
+
+        it('el padre inscribe a su hijo al cursado', async () => {
+            const antes = (await api('GET', '/api/academico/cursos-disponibles', { token: tk('pad1') })).data.find(c => c.id === F.c2);
+            const r = await inscribirCurso(F.hijoA, F.c2);
+            assert.equal(r.status, 200, JSON.stringify(r.data));
+            assert.equal(await cursoDeAlumno(F.hijoA), F.c2);
+            const despues = (await api('GET', '/api/academico/cursos-disponibles', { token: tk('pad1') })).data.find(c => c.id === F.c2);
+            assert.equal(despues.vacantes, antes.vacantes - 1);
+            // y ahora la ficha del hijo ya muestra las materias de ese curso
+            const ficha = await api('GET', `/api/academico/mis-hijos/${F.hijoA}/ficha`, { token: tk('pad1') });
+            assert.ok(ficha.data.secciones[1].filas.some(m => m.materia === `Lengua ${tag}`));
+        });
+
+        it('no inscribe si el hijo ya tiene curso, está inactivo o no es del padre', async () => {
+            const yaTiene = await inscribirCurso(F.hijoA, F.c1);
+            assert.equal(yaTiene.status, 409);
+            assert.match(yaTiene.data.message, /Dirección/);
+            assert.equal(await cursoDeAlumno(F.hijoA), F.c2, 'no se cambió el curso');
+            assert.equal((await inscribirCurso(F.hijoConCurso, F.c2)).status, 409);
+            assert.equal((await inscribirCurso(F.hijoInactivo, F.c1)).status, 409, 'alumno inactivo');
+            assert.equal(await cursoDeAlumno(F.hijoInactivo), null);
+            assert.equal((await inscribirCurso(F.hijoB, F.c1)).status, 403, 'hijo de otro padre');
+            assert.equal(await cursoDeAlumno(F.hijoB), null);
+            assert.equal((await inscribirCurso(F.aC1, F.c1)).status, 403, 'alumno sin tutor');
+        });
+
+        it('no inscribe en un curso lleno, inexistente o sin indicar', async () => {
+            const lleno = await inscribirCurso(F.hijoC, F.cLleno);
+            assert.equal(lleno.status, 400);
+            assert.match(lleno.data.message, /vacantes/);
+            assert.equal(await cursoDeAlumno(F.hijoC), null);
+            assert.equal((await inscribirCurso(F.hijoC, 987654321)).status, 404);
+            assert.equal((await api('POST', `/api/academico/mis-hijos/${F.hijoC}/inscribir-curso`, { token: tk('pad1'), body: {} })).status, 400);
+            assert.equal((await api('POST', '/api/academico/mis-hijos/abc/inscribir-curso', { token: tk('pad1'), body: { curso_id: F.c1 } })).status, 400);
+            for (const t of [tokens.docente, tokens.alumno, tokens.admin]) {
+                assert.equal((await api('POST', `/api/academico/mis-hijos/${F.hijoC}/inscribir-curso`, { token: t, body: { curso_id: F.c1 } })).status, 403);
+            }
+        });
+
+        it('si dos padres piden la última vacante a la vez, solo uno la consigue', async () => {
+            const [a, b] = await Promise.all([inscribirCurso(F.carrera1, F.cUno, 'pad1'), inscribirCurso(F.carrera2, F.cUno, 'pad2')]);
+            assert.deepEqual([a.status, b.status].sort(), [200, 400], `respuestas: ${JSON.stringify([a.data, b.data])}`);
+            const n = (await db.query('SELECT COUNT(*)::int AS n FROM alumnos WHERE curso_id = $1', [F.cUno])).rows[0].n;
+            assert.equal(n, 1, 'el curso no supera su cupo');
+        });
+    });
 });

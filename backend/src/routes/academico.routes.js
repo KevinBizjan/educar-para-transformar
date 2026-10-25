@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const academicoController = require('../controllers/academico.controller');
+const portalController = require('../controllers/portal.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 
 // Rutas protegidas por rol (Admin y Docente)
@@ -36,6 +37,10 @@ router.post('/inscribir-actividad', authMiddleware(['alumno']), academicoControl
 router.delete('/desinscribir-actividad/:actividad_id', authMiddleware(['alumno']), academicoController.desinscribirActividad);
 router.get('/mis-hijos', authMiddleware(['padre']), academicoController.getMisHijos);
 router.get('/mis-hijos/:alumno_id/resumen', authMiddleware(['padre']), academicoController.getResumenHijo);
+router.get('/mis-hijos/:alumno_id/ficha', authMiddleware(['padre']), portalController.fichaHijo);
+router.post('/mis-hijos/:alumno_id/inscribir-curso', authMiddleware(['padre']), portalController.inscribirCurso);
+router.get('/cursos-disponibles', authMiddleware(['padre']), portalController.cursosDisponibles);
+router.get('/mis-cursos', authMiddleware(['docente']), portalController.misCursos);
 router.get('/alumnos-disponibles', authMiddleware(['padre']), academicoController.getAlumnosDisponibles);
 router.post('/vincular-hijo', authMiddleware(['padre']), academicoController.vincularHijo);
 router.delete('/desvincular-hijo/:id', authMiddleware(['padre']), academicoController.desvincularHijo);

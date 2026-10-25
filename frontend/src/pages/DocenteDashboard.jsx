@@ -4,6 +4,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
+import MisCursosDocente from '../components/MisCursosDocente';
 
 // Fecha de hoy en hora local (AAAA-MM-DD). toISOString() usa UTC y de noche
 // devolvería el día siguiente.
@@ -378,6 +379,8 @@ const DocenteDashboard = () => {
     return (
         <DashboardLayout title="Panel Docente">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
+                <MisCursosDocente />
+
                 {/* Asistencia Diaria */}
                 <div className="dashboard-card" style={cardStyle}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '12px' }}>
