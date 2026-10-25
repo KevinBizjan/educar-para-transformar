@@ -284,6 +284,27 @@ CREATE TABLE IF NOT EXISTS servicios (
     UNIQUE (tipo, nombre)
 );
 
+-- Deportes por GRUPO: un deporte (actividades_extra) tiene grupos según nivel y horario, y cada
+-- grupo tiene un profesor a cargo. Cada grupo es un servicio de tipo Deporte con estas columnas
+-- (en los demás tipos quedan vacías). Las reglas de obligatoriedad las valida la API.
+ALTER TABLE servicios ADD COLUMN IF NOT EXISTS docente_id INTEGER REFERENCES personal(id);
+ALTER TABLE servicios ADD COLUMN IF NOT EXISTS nivel_id INTEGER REFERENCES niveles(id);
+ALTER TABLE servicios ADD COLUMN IF NOT EXISTS dia_semana INTEGER;
+ALTER TABLE servicios ADD COLUMN IF NOT EXISTS hora_inicio TEXT;
+ALTER TABLE servicios ADD COLUMN IF NOT EXISTS hora_fin TEXT;
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'servicios_horario_chk' AND conrelid = 'servicios'::regclass) THEN
+        ALTER TABLE servicios ADD CONSTRAINT servicios_horario_chk CHECK (
+            (dia_semana IS NULL AND hora_inicio IS NULL AND hora_fin IS NULL)
+            OR (dia_semana BETWEEN 1 AND 7
+                AND hora_inicio ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+                AND hora_fin ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'
+                AND hora_inicio < hora_fin)
+        );
+    END IF;
+END $$;
+
 -- Inscripción de un alumno a un servicio en un mes (el transporte puede variar mes a mes).
 CREATE TABLE IF NOT EXISTS inscripciones_servicio (
     id SERIAL PRIMARY KEY,

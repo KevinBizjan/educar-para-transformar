@@ -14,6 +14,8 @@ const {
     MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, rangoDelMes, ReglaError,
 } = require('../utils/inscripciones');
 
+const { validarHorarioGrupo, seSuperponen, describirHorario } = require('../utils/deportes');
+
 const TIPOS = ['Deporte', 'Transporte', 'Comedor'];
 
 const hoy = () => new Date();
@@ -47,12 +49,17 @@ exports.getCatalogo = async (req, res) => {
     try {
         const r = await db.query(
             `SELECT s.id, s.tipo, s.nombre, s.precio_mensual, s.cupo_max,
+                    s.dia_semana, s.hora_inicio, s.hora_fin,
+                    a.nombre AS deporte, n.nombre AS nivel, (p.nombre || ' ' || p.apellido) AS docente,
                     COUNT(i.id)::int AS inscriptos
              FROM servicios s
+             LEFT JOIN actividades_extra a ON a.id = s.actividad_id
+             LEFT JOIN niveles n ON n.id = s.nivel_id
+             LEFT JOIN personal p ON p.id = s.docente_id
              LEFT JOIN inscripciones_servicio i
                     ON i.servicio_id = s.id AND i.mes = $1 AND i.anio = $2 AND i.estado = 'Activa'
              WHERE s.activo = TRUE
-             GROUP BY s.id
+             GROUP BY s.id, a.nombre, n.nombre, p.nombre, p.apellido
              ORDER BY s.tipo, s.nombre`,
             [mes, anio]
         );
@@ -100,7 +107,8 @@ exports.getResumenFamilia = async (req, res) => {
             // Las dos consultas no dependen entre sí: van en paralelo (una ida y vuelta menos a la base).
             const [respServicios, respComedor] = await Promise.all([
                 db.query(
-                    `SELECT i.id, i.alumno_id, i.servicio_id, s.tipo, s.nombre, s.precio_mensual
+                    `SELECT i.id, i.alumno_id, i.servicio_id, s.tipo, s.nombre, s.precio_mensual,
+                            s.dia_semana, s.hora_inicio, s.hora_fin
                      FROM inscripciones_servicio i JOIN servicios s ON s.id = i.servicio_id
                      WHERE i.alumno_id = ANY($1) AND i.mes = $2 AND i.anio = $3 AND i.estado = 'Activa'
                      ORDER BY s.tipo, s.nombre`,
@@ -224,13 +232,32 @@ exports.inscribir = async (req, res) => {
 
         // Límites por alumno y por mes
         if (servicio.tipo === 'Deporte') {
-            const n = (await consulta(
-                `SELECT COUNT(*)::int AS n FROM inscripciones_servicio i JOIN servicios s ON s.id = i.servicio_id
+            const deportes = (await consulta(
+                `SELECT s.id, s.nombre, s.actividad_id, s.dia_semana, s.hora_inicio, s.hora_fin
+                 FROM inscripciones_servicio i JOIN servicios s ON s.id = i.servicio_id
                  WHERE i.alumno_id = $1 AND i.mes = $2 AND i.anio = $3 AND i.estado = 'Activa' AND s.tipo = 'Deporte'`,
                 [alumnoId, mes, anio]
-            )).rows[0].n;
-            if (n >= MAX_DEPORTES_POR_ALUMNO) {
+            )).rows;
+            if (deportes.length >= MAX_DEPORTES_POR_ALUMNO) {
                 throw new ReglaError(409, `Un alumno puede inscribirse como máximo en ${MAX_DEPORTES_POR_ALUMNO} deportes por mes`);
+            }
+            // Un grupo pertenece a un nivel: el alumno tiene que cursar en ese nivel (si tiene curso).
+            if (servicio.nivel_id) {
+                const nivelAlumno = (await consulta(
+                    `SELECT c.nivel_id FROM alumnos a LEFT JOIN cursos c ON c.id = a.curso_id WHERE a.id = $1`, [alumnoId]
+                )).rows[0].nivel_id;
+                if (nivelAlumno && nivelAlumno !== servicio.nivel_id) {
+                    const nivel = (await consulta('SELECT nombre FROM niveles WHERE id = $1', [servicio.nivel_id])).rows[0];
+                    throw new ReglaError(409, `Este grupo es para el nivel ${nivel ? nivel.nombre : 'indicado'}`);
+                }
+            }
+            // No dos grupos del mismo deporte, ni dos actividades que se pisen en el horario.
+            if (servicio.actividad_id && deportes.some((d) => d.actividad_id === servicio.actividad_id)) {
+                throw new ReglaError(409, 'El alumno ya está inscripto en este deporte (en otro grupo)');
+            }
+            const choque = deportes.find((d) => d.dia_semana && servicio.dia_semana && seSuperponen(d, servicio));
+            if (choque) {
+                throw new ReglaError(409, `El horario se superpone con "${choque.nombre}" (${describirHorario(choque)})`);
             }
         }
         if (servicio.tipo === 'Transporte') {
@@ -310,6 +337,24 @@ exports.darDeBaja = async (req, res) => {
 const numeroPositivo = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
 const enteroPositivoONulo = (v) => (v === null || v === undefined || v === '' ? null : (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : undefined));
 
+const entero = (v) => { const n = Number(v); return v !== null && v !== '' && v !== undefined && Number.isInteger(n) ? n : null; };
+
+// El profesor del grupo tiene que existir, ser docente activo y no tener otro grupo en ese horario.
+const validarDocenteDeGrupo = async (docenteId, horario, excluirServicioId = 0) => {
+    const docente = (await db.query('SELECT id, tipo, estado FROM personal WHERE id = $1', [docenteId])).rows[0];
+    if (!docente || docente.tipo !== 'Docente') throw new ReglaError(400, 'El profesor indicado no existe o no es docente');
+    if (docente.estado !== 'Activo') throw new ReglaError(400, 'El profesor indicado no está activo');
+    const otros = (await db.query(
+        `SELECT nombre, dia_semana, hora_inicio, hora_fin FROM servicios
+         WHERE docente_id = $1 AND tipo = 'Deporte' AND activo = TRUE AND id <> $2 AND dia_semana IS NOT NULL`,
+        [docenteId, excluirServicioId]
+    )).rows;
+    const choque = otros.find((o) => seSuperponen(o, horario));
+    if (choque) {
+        throw new ReglaError(409, `El profesor ya tiene el grupo "${choque.nombre}" en ese horario (${describirHorario(choque)})`);
+    }
+};
+
 exports.crearServicio = async (req, res) => {
     const tipo = (req.body.tipo || '').trim();
     const nombre = (req.body.nombre || '').trim();
@@ -321,18 +366,48 @@ exports.crearServicio = async (req, res) => {
     if (precio === null) return res.status(400).json({ message: 'El precio mensual debe ser un número mayor a 0' });
     if (cupo === undefined) return res.status(400).json({ message: 'El cupo debe ser un entero mayor a 0 (o vacío si no tiene límite)' });
 
+    const datos = { actividad_id: null, docente_id: null, nivel_id: null, dia_semana: null, hora_inicio: null, hora_fin: null, ruta_id: null };
+
     try {
+        if (tipo === 'Deporte') {
+            // Un grupo de deporte = el deporte + el nivel + el día y horario + el profesor a cargo.
+            const actividadId = entero(req.body.actividad_id);
+            const docenteId = entero(req.body.docente_id);
+            const nivelId = entero(req.body.nivel_id);
+            const dia = entero(req.body.dia_semana);
+            const inicio = (req.body.hora_inicio || '').trim();
+            const fin = (req.body.hora_fin || '').trim();
+            if (!actividadId || !docenteId || !nivelId) {
+                throw new ReglaError(400, 'Un grupo de deporte necesita el deporte, el profesor a cargo y el nivel');
+            }
+            const errorHorario = validarHorarioGrupo(dia, inicio, fin);
+            if (errorHorario) throw new ReglaError(400, errorHorario);
+
+            const actividad = (await db.query('SELECT tipo FROM actividades_extra WHERE id = $1', [actividadId])).rows[0];
+            if (!actividad || actividad.tipo !== 'Deporte') throw new ReglaError(400, 'La actividad indicada no existe o no es un deporte');
+            const nivel = (await db.query('SELECT id FROM niveles WHERE id = $1', [nivelId])).rows[0];
+            if (!nivel) throw new ReglaError(400, 'El nivel indicado no existe');
+            await validarDocenteDeGrupo(docenteId, { dia_semana: dia, hora_inicio: inicio, hora_fin: fin });
+
+            Object.assign(datos, { actividad_id: actividadId, docente_id: docenteId, nivel_id: nivelId, dia_semana: dia, hora_inicio: inicio, hora_fin: fin });
+        } else if (tipo === 'Transporte') {
+            const rutaId = entero(req.body.ruta_id);
+            if (!rutaId) throw new ReglaError(400, 'Un servicio de transporte necesita el recorrido');
+            const ruta = (await db.query('SELECT id FROM transporte_rutas WHERE id = $1', [rutaId])).rows[0];
+            if (!ruta) throw new ReglaError(400, 'El recorrido indicado no existe');
+            datos.ruta_id = rutaId;
+        }
+
         const r = await db.query(
-            `INSERT INTO servicios (tipo, nombre, precio_mensual, cupo_max, actividad_id, ruta_id)
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-            [tipo, nombre, precio, cupo,
-                tipo === 'Deporte' ? (parseInt(req.body.actividad_id) || null) : null,
-                tipo === 'Transporte' ? (parseInt(req.body.ruta_id) || null) : null]
+            `INSERT INTO servicios (tipo, nombre, precio_mensual, cupo_max, actividad_id, ruta_id, docente_id, nivel_id, dia_semana, hora_inicio, hora_fin)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+            [tipo, nombre, precio, cupo, datos.actividad_id, datos.ruta_id, datos.docente_id, datos.nivel_id, datos.dia_semana, datos.hora_inicio, datos.hora_fin]
         );
         res.status(201).json({ id: r.rows[0].id });
     } catch (err) {
+        if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
         if (err.code === '23505') return res.status(409).json({ message: 'Ya existe un servicio de ese tipo con ese nombre' });
-        if (err.code === '23503') return res.status(400).json({ message: 'La actividad o el recorrido indicado no existe' });
+        if (err.code === '23503') return res.status(400).json({ message: 'Alguno de los datos relacionados no existe' });
         res.status(500).json({ message: 'Error en el servidor' });
     }
 };
@@ -345,28 +420,38 @@ exports.actualizarServicio = async (req, res) => {
     const valores = [];
     const agregar = (columna, valor) => { valores.push(valor); cambios.push(`${columna} = $${valores.length}`); };
 
-    if (req.body.precio_mensual !== undefined) {
-        const precio = numeroPositivo(req.body.precio_mensual);
-        if (precio === null) return res.status(400).json({ message: 'El precio mensual debe ser un número mayor a 0' });
-        agregar('precio_mensual', precio);
-    }
-    if (req.body.cupo_max !== undefined) {
-        const cupo = enteroPositivoONulo(req.body.cupo_max);
-        if (cupo === undefined) return res.status(400).json({ message: 'El cupo debe ser un entero mayor a 0 (o vacío si no tiene límite)' });
-        agregar('cupo_max', cupo);
-    }
-    if (req.body.activo !== undefined) {
-        if (typeof req.body.activo !== 'boolean') return res.status(400).json({ message: 'El campo activo debe ser verdadero o falso' });
-        agregar('activo', req.body.activo);
-    }
-    if (cambios.length === 0) return res.status(400).json({ message: 'No hay nada para actualizar' });
-
     try {
+        if (req.body.precio_mensual !== undefined) {
+            const precio = numeroPositivo(req.body.precio_mensual);
+            if (precio === null) throw new ReglaError(400, 'El precio mensual debe ser un número mayor a 0');
+            agregar('precio_mensual', precio);
+        }
+        if (req.body.cupo_max !== undefined) {
+            const cupo = enteroPositivoONulo(req.body.cupo_max);
+            if (cupo === undefined) throw new ReglaError(400, 'El cupo debe ser un entero mayor a 0 (o vacío si no tiene límite)');
+            agregar('cupo_max', cupo);
+        }
+        if (req.body.activo !== undefined) {
+            if (typeof req.body.activo !== 'boolean') throw new ReglaError(400, 'El campo activo debe ser verdadero o falso');
+            agregar('activo', req.body.activo);
+        }
+        // Cambiar el profesor a cargo de un grupo (por ejemplo, un reemplazo).
+        if (req.body.docente_id !== undefined) {
+            const fila = (await db.query('SELECT tipo, dia_semana, hora_inicio, hora_fin FROM servicios WHERE id = $1', [id])).rows[0];
+            if (!fila) throw new ReglaError(404, 'Servicio no encontrado');
+            if (fila.tipo !== 'Deporte') throw new ReglaError(400, 'Solo los grupos de deporte tienen profesor a cargo');
+            const docenteId = entero(req.body.docente_id);
+            if (!docenteId) throw new ReglaError(400, 'El profesor es obligatorio');
+            await validarDocenteDeGrupo(docenteId, fila, id);
+            agregar('docente_id', docenteId);
+        }
+        if (cambios.length === 0) throw new ReglaError(400, 'No hay nada para actualizar');
+
         valores.push(id);
         const r = await db.query(`UPDATE servicios SET ${cambios.join(', ')} WHERE id = $${valores.length}`, valores);
-        if (r.rowCount === 0) return res.status(404).json({ message: 'Servicio no encontrado' });
+        if (r.rowCount === 0) throw new ReglaError(404, 'Servicio no encontrado');
         res.json({ message: 'Servicio actualizado' });
     } catch (err) {
-        res.status(500).json({ message: 'Error en el servidor' });
+        responderError(res, err);
     }
 };
