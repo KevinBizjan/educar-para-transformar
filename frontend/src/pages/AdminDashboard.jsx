@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import DashboardLayout from '../components/DashboardLayout';
 import ConfirmModal from '../components/ConfirmModal';
+import ReportesListados from '../components/ReportesListados';
 
 import { esNombreValido } from '../utils/validators';
 
@@ -1506,6 +1507,7 @@ const AdminDashboard = () => {
                     </div>
                 </div>
             )}
+            {activeTab === 'reportes' && <ReportesListados />}
             {activeTab === 'academico' && academicoSub === 'materias' && (
                 <div style={cardStyle}>
                     <h2 style={{ fontSize: '1.25rem', color: 'var(--blue)', fontWeight: 800, marginBottom: '8px' }}>Materias por Curso</h2>

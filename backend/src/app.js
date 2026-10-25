@@ -8,7 +8,9 @@ require('dotenv').config();
 const app = express();
 
 // Middlewares
-app.use(cors()); // Permitir todos los orígenes para desarrollo local
+// Permitir todos los orígenes para desarrollo local. Content-Disposition se expone para que el front pueda
+// leer el nombre de archivo de las descargas (reportes en CSV) también entre orígenes distintos.
+app.use(cors({ exposedHeaders: ['Content-Disposition'] }));
 app.use(express.json());
 app.use(morgan('dev'));
 
@@ -23,6 +25,7 @@ app.use('/api/financiero', require('./routes/financiero.routes'));
 app.use('/api/servicios', require('./routes/servicios.routes'));
 app.use('/api/comunicacion', require('./routes/comunicacion.routes'));
 app.use('/api/inscripciones', require('./routes/inscripciones.routes'));
+app.use('/api/reportes', require('./routes/reportes.routes'));
 
 // Health check de la API (útil para monitoreo del deploy)
 app.get('/api/health', (req, res) => {

@@ -1069,4 +1069,260 @@ describe('API Educar para Transformar', { skip }, () => {
             }
         });
     });
+
+    describe('Reportes de la Dirección (ARTE-2, Sprint B)', () => {
+        const tag = String(Date.now());
+        const MES = 6;
+        const ANIO = 2043;
+        const PASS = 'Inicial1!x';
+        const F = {};                 // fixtures: ids
+        const leg = (id) => `A-${String(id).padStart(5, '0')}`;
+        const get = (path, token = tokens.admin) => api('GET', `/api/reportes${path}`, { token });
+        const periodo = `mes=${MES}&anio=${ANIO}`;
+        const filas = (r, seccion = 0) => r.data.secciones[seccion].filas;
+        const delAlumno = (r, id, seccion = 0) => filas(r, seccion).filter(x => x.legajo === leg(id));
+
+        const alumno = async (apellido, cursoId, estado = 'Activo') => (await db.query(
+            `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, curso_id, estado)
+             VALUES ('Rep', $1, $2, '2015-05-05', $3, $4) RETURNING id`, [apellido, dniUnico(), cursoId, estado]
+        )).rows[0].id;
+        const curso = async (nivelId, division) => (await db.query(
+            'INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, 30) RETURNING id', [nivelId, division])).rows[0].id;
+        const materia = async (nombre, cursoId) => (await db.query(
+            'INSERT INTO materias (nombre, curso_id) VALUES ($1, $2) RETURNING id', [`${nombre} ${tag}`, cursoId])).rows[0].id;
+        const horario = (materiaId, docenteId, dia, ini, fin) => db.query(
+            'INSERT INTO horarios (materia_id, docente_id, aula_id, dia_semana, hora_inicio, hora_fin) VALUES ($1, $2, (SELECT id FROM aulas ORDER BY id LIMIT 1), $3, $4, $5)',
+            [materiaId, docenteId, dia, ini, fin]);
+        const servicio = async (body) => {
+            const r = await api('POST', '/api/inscripciones/servicios', { token: tokens.admin, body: { precio_mensual: 1000, ...body } });
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            return r.data.id;
+        };
+        const inscribir = async (alumnoId, servicioId, mes = MES) => {
+            const r = await api('POST', '/api/inscripciones', { token: tokens.admin, body: { alumno_id: alumnoId, servicio_id: servicioId, mes, anio: ANIO } });
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            return r.data.id;
+        };
+
+        before(async () => {
+            F.c1 = await curso(apoyo.nivel, `R1-${tag}`);
+            F.c2 = await curso(apoyo.nivel2, `R2-${tag}`);
+            F.m1 = await materia('Matemática', F.c1);
+            F.m2 = await materia('Lengua', F.c1);
+            F.m3 = await materia('Historia', F.c2);
+            F.m4 = await materia('Sin profesor', F.c1);
+            await horario(F.m1, apoyo.docente, 1, '08:00', '09:30');
+            await horario(F.m3, apoyo.docente, 3, '10:00', '11:00');
+            await horario(F.m2, apoyo.docente2, 2, '08:00', '09:00');
+
+            F.a1 = await alumno('Aguirre', F.c1);
+            F.a2 = await alumno('Benitez', F.c1);
+            F.a3 = await alumno('Cabral', F.c2);
+            F.a4 = await alumno('Dominguez', F.c1, 'Inactivo');
+            F.a5 = await alumno('Echeverria', null);
+            F.a6 = await alumno('=Evil', F.c2);
+
+            // Deportes: un grupo por nivel, cada uno con su profesor y su horario
+            const dg1 = await datosGrupo({ nivel_id: apoyo.nivel, docente_id: apoyo.docente, dia_semana: 2, hora_inicio: '16:00', hora_fin: '17:00' });
+            const dg2 = await datosGrupo({ nivel_id: apoyo.nivel2, docente_id: apoyo.docente2, dia_semana: 4, hora_inicio: '17:00', hora_fin: '18:30' });
+            F.actividad1 = dg1.actividad_id;
+            F.g1 = await servicio({ tipo: 'Deporte', nombre: `RP-G1-${tag}`, ...dg1 });
+            F.g2 = await servicio({ tipo: 'Deporte', nombre: `RP-G2-${tag}`, ...dg2 });
+            F.i1 = await inscribir(F.a1, F.g1);
+            F.i2 = await inscribir(F.a2, F.g1);
+            await inscribir(F.a3, F.g2);
+            await inscribir(F.a5, F.g2);
+
+            // Transporte: A1 con asignación y además inscripción del mes (se cuenta una sola vez), A2 solo inscripción
+            F.ruta = apoyo.rutas[0];
+            F.ruta2 = apoyo.rutas[1];
+            F.t1 = await servicio({ tipo: 'Transporte', nombre: `RP-T1-${tag}`, ruta_id: F.ruta });
+            await inscribir(F.a1, F.t1);
+            await inscribir(F.a2, F.t1);
+            const asignar = (alumno_id, ruta_id, punto_encuentro) => api('POST', '/api/servicios/transporte/asignar', {
+                token: tokens.admin, body: { alumno_id, ruta_id, punto_encuentro }
+            });
+            assert.equal((await asignar(F.a1, F.ruta, 'Plaza Central')).status, 201);
+            assert.equal((await asignar(F.a3, F.ruta2, 'Esquina Norte')).status, 201);
+
+            // Comedor de A1: inscripto, 2 días registrados (1 con menú)
+            F.comedor = await servicio({ tipo: 'Comedor', nombre: `RP-C-${tag}`, precio_mensual: 500 });
+            await inscribir(F.a1, F.comedor);
+            await db.query('INSERT INTO comedor_asistencias (alumno_id, fecha, consumio_menu) VALUES ($1, $2, true), ($1, $3, false)',
+                [F.a1, `${ANIO}-06-02`, `${ANIO}-06-03`]);
+        });
+
+        after(async () => {
+            const alumnos = [F.a1, F.a2, F.a3, F.a4, F.a5, F.a6];
+            await db.query('DELETE FROM comedor_asistencias WHERE alumno_id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM transporte_asignaciones WHERE alumno_id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM inscripciones_servicio WHERE alumno_id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM servicios WHERE nombre LIKE $1', [`RP-%-${tag}`]);
+            await db.query('DELETE FROM horarios WHERE materia_id = ANY($1)', [[F.m1, F.m2, F.m3, F.m4]]);
+            await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnos]);
+            await db.query('DELETE FROM materias WHERE id = ANY($1)', [[F.m1, F.m2, F.m3, F.m4]]);
+            await db.query('DELETE FROM cursos WHERE id = ANY($1)', [[F.c1, F.c2]]);
+        });
+
+        it('solo el administrador accede a los reportes', async () => {
+            assert.equal((await api('GET', '/api/reportes')).status, 403);
+            for (const t of [tokens.padre, tokens.docente, tokens.alumno]) {
+                assert.equal((await get('', t)).status, 403);
+                assert.equal((await get('/alumnos-por-curso', t)).status, 403);
+                assert.equal((await get(`/alumno/${F.a1}`, t)).status, 403);
+            }
+            assert.equal((await get('')).status, 200);
+        });
+
+        it('el catálogo lista los 9 reportes y las opciones traen lo necesario para los filtros', async () => {
+            const cat = await get('');
+            assert.equal(cat.data.length, 9);
+            const op = await get('/opciones');
+            assert.equal(op.status, 200);
+            for (const clave of ['niveles', 'cursos', 'materias', 'docentes', 'deportes', 'rutas', 'alumnos']) {
+                assert.ok(Array.isArray(op.data[clave]), clave);
+            }
+            assert.ok(op.data.alumnos.some(a => a.legajo === leg(F.a1)));
+            assert.ok(!op.data.alumnos.some(a => a.legajo === leg(F.a4)), 'un alumno inactivo no se ofrece');
+        });
+
+        it('alumnos por curso: nivel, curso, legajo, apellido y nombre, solo activos y con curso', async () => {
+            const r = await get(`/alumnos-por-curso?curso_id=${F.c1}`);
+            assert.equal(r.status, 200);
+            assert.deepEqual(r.data.secciones[0].columnas.map(c => c.clave), ['nivel', 'curso', 'legajo', 'apellido', 'nombre']);
+            const legajos = filas(r).map(x => x.legajo);
+            assert.deepEqual(legajos, [leg(F.a1), leg(F.a2)], 'ordenados por apellido, sin el inactivo ni el que no tiene curso');
+            assert.ok(filas(r).every(x => x.curso === `R1-${tag}`));
+            assert.equal((await get('/alumnos-por-curso?curso_id=abc')).status, 400);
+        });
+
+        it('alumnos por materia: con su profesor a cargo, o aviso si no tiene', async () => {
+            const r = await get(`/alumnos-por-materia?curso_id=${F.c1}`);
+            assert.equal(r.status, 200);
+            assert.deepEqual(r.data.secciones[0].columnas.map(c => c.clave), ['nivel', 'curso', 'materia', 'profesor', 'alumno', 'legajo']);
+            const porMateria = (nombre) => filas(r).filter(x => x.materia === `${nombre} ${tag}`);
+            assert.equal(porMateria('Matemática').length, 2, 'A1 y A2 (el inactivo no)');
+            assert.match(porMateria('Matemática')[0].profesor, /^Uno/);
+            assert.match(porMateria('Lengua')[0].profesor, /^Dos/);
+            assert.equal(porMateria('Sin profesor')[0].profesor, 'Sin profesor asignado');
+            const una = await get(`/alumnos-por-materia?materia_id=${F.m3}`);
+            assert.deepEqual(filas(una).map(x => x.legajo).sort(), [leg(F.a3), leg(F.a6)].sort(), 'A3 y A6 cursan Historia (curso 2)');
+        });
+
+        it('docentes por nivel: materias a cargo y cursos', async () => {
+            const r = await get(`/docentes-por-nivel?nivel_id=${apoyo.nivel}`);
+            assert.equal(r.status, 200);
+            const uno = filas(r).find(x => x.profesor.startsWith('Uno'));
+            assert.equal(uno.nivel, (await db.query('SELECT nombre FROM niveles WHERE id = $1', [apoyo.nivel])).rows[0].nombre);
+            assert.equal(uno.materias, `Matemática ${tag}`);
+            assert.equal(uno.cursos, `R1-${tag}`);
+            const dos = filas(r).find(x => x.profesor.startsWith('Dos'));
+            assert.equal(dos.materias, `Lengua ${tag}`);
+            const otro = await get(`/docentes-por-nivel?nivel_id=${apoyo.nivel2}`);
+            const unoN2 = filas(otro).find(x => x.profesor.startsWith('Uno'));
+            assert.equal(unoN2.materias, `Historia ${tag}`);
+        });
+
+        it('por docente: sus cursos por nivel y los horarios de cada curso', async () => {
+            const r = await get(`/docente/${apoyo.docente}`);
+            assert.equal(r.status, 200);
+            const [datos, cursos, horarios] = r.data.secciones;
+            assert.equal(datos.filas[0].legajo, `D-${String(apoyo.docente).padStart(5, '0')}`);
+            assert.equal(cursos.filas.length, 2, 'un curso en cada nivel');
+            assert.deepEqual(horarios.filas.map(h => [h.materia, h.dia, h.inicio, h.fin]), [
+                [`Matemática ${tag}`, 'Lunes', '08:00', '09:30'],
+                [`Historia ${tag}`, 'Miércoles', '10:00', '11:00'],
+            ]);
+            assert.equal((await get('/docente/2147483000')).status, 404);
+            const admin = await nuevoDocente('Admin', { tipo: 'Administrativo' });
+            assert.equal((await get(`/docente/${admin}`)).status, 404, 'solo los docentes tienen este reporte');
+            assert.equal((await get('/docente/abc')).status, 400);
+        });
+
+        it('por alumno: curso, materias y profesores, deportes con horario, transporte y comedor', async () => {
+            const r = await get(`/alumno/${F.a1}?${periodo}`);
+            assert.equal(r.status, 200);
+            const [datos, materias, deportes, transporte, comedor] = r.data.secciones;
+            assert.equal(datos.filas[0].legajo, leg(F.a1));
+            assert.equal(datos.filas[0].curso, `R1-${tag}`);
+            assert.deepEqual(materias.filas.map(m => m.materia), [`Lengua ${tag}`, `Matemática ${tag}`, `Sin profesor ${tag}`]);
+            assert.equal(deportes.filas.length, 1);
+            assert.equal(deportes.filas[0].horario, 'martes 16:00 a 17:00');
+            assert.match(deportes.filas[0].profesor, /^Uno/);
+            assert.equal(transporte.filas.length, 1, 'asignación e inscripción del mismo recorrido cuentan una vez');
+            assert.equal(transporte.filas[0].punto, 'Plaza Central');
+            assert.equal(transporte.filas[0].origen, 'Asignación');
+            assert.deepEqual(comedor.filas[0], { inscripto: 'Sí', consumidos: 1, registrados: 2 });
+        });
+
+        it('por alumno: sin curso ni servicios los datos quedan vacíos y no falla', async () => {
+            const r = await get(`/alumno/${F.a5}?${periodo}`);
+            const [datos, materias, deportes, transporte, comedor] = r.data.secciones;
+            assert.equal(datos.filas[0].curso, 'Sin curso');
+            assert.equal(materias.filas.length, 0);
+            assert.equal(deportes.filas.length, 1, 'A5 sí está en un deporte');
+            assert.equal(transporte.filas.length, 0);
+            assert.equal(comedor.filas[0].inscripto, 'No');
+            assert.equal((await get('/alumno/2147483000')).status, 404);
+            assert.equal((await get(`/alumno/${F.a1}?mes=13&anio=${ANIO}`)).status, 400);
+        });
+
+        it('alumnos por deporte: del mes pedido, sin las bajas', async () => {
+            const r = await get(`/alumnos-por-deporte?actividad_id=${F.actividad1}&${periodo}`);
+            assert.deepEqual(r.data.secciones[0].columnas.map(c => c.clave), ['deporte', 'alumno', 'curso', 'nivel_alumno']);
+            assert.deepEqual(filas(r).map(x => x.alumno), ['Aguirre, Rep', 'Benitez, Rep']);
+            const otroMes = await get(`/alumnos-por-deporte?actividad_id=${F.actividad1}&mes=${MES + 1}&anio=${ANIO}`);
+            assert.equal(filas(otroMes).length, 0, 'las inscripciones son mensuales');
+
+            await api('DELETE', `/api/inscripciones/${F.i2}`, { token: tokens.admin });
+            const sinBaja = await get(`/alumnos-por-deporte?actividad_id=${F.actividad1}&${periodo}`);
+            assert.deepEqual(filas(sinBaja).map(x => x.alumno), ['Aguirre, Rep']);
+        });
+
+        it('alumnos por deporte y nivel, y con horario y profesor', async () => {
+            const nivel2 = await get(`/alumnos-por-deporte-y-nivel?nivel_id=${apoyo.nivel2}&${periodo}`);
+            assert.deepEqual(nivel2.data.secciones[0].columnas.map(c => c.clave), ['deporte', 'nivel_grupo', 'alumno', 'curso']);
+            const nombres = filas(nivel2).map(x => x.alumno);
+            assert.ok(nombres.includes('Cabral, Rep') && nombres.includes('Echeverria, Rep'));
+            assert.ok(!nombres.includes('Aguirre, Rep'), 'el grupo del nivel 1 no entra');
+
+            const completo = await get(`/alumnos-por-deporte-nivel-horario?actividad_id=${F.actividad1}&${periodo}`);
+            assert.deepEqual(completo.data.secciones[0].columnas.map(c => c.clave), ['deporte', 'nivel_grupo', 'horario', 'profesor', 'alumno', 'curso']);
+            const fila = filas(completo)[0];
+            assert.equal(fila.horario, 'martes 16:00 a 17:00');
+            assert.match(fila.profesor, /^Uno/);
+            assert.equal(fila.alumno, 'Aguirre, Rep');
+        });
+
+        it('alumnos por recorrido: asignaciones e inscripciones del mes, sin repetir', async () => {
+            const r = await get(`/alumnos-por-recorrido?ruta_id=${F.ruta}&${periodo}`);
+            assert.deepEqual(r.data.secciones[0].columnas.map(c => c.clave), ['recorrido', 'chofer', 'alumno', 'nivel', 'curso', 'punto', 'origen']);
+            const porAlumno = Object.fromEntries(filas(r).map(x => [x.alumno, x]));
+            assert.equal(filas(r).length, 2);
+            assert.equal(porAlumno['Aguirre, Rep'].origen, 'Asignación');
+            assert.equal(porAlumno['Aguirre, Rep'].punto, 'Plaza Central');
+            assert.equal(porAlumno['Benitez, Rep'].origen, 'Inscripción del mes');
+            assert.equal(porAlumno['Benitez, Rep'].punto, '-');
+            const otra = await get(`/alumnos-por-recorrido?ruta_id=${F.ruta2}&${periodo}`);
+            assert.deepEqual(filas(otra).map(x => x.alumno), ['Cabral, Rep']);
+        });
+
+        it('se puede descargar en CSV, con los acentos y sin fórmulas peligrosas', async () => {
+            const res = await http('GET', `/api/reportes/alumnos-por-curso?curso_id=${F.c2}&formato=csv`, { token: tokens.admin });
+            assert.equal(res.status, 200);
+            assert.match(res.headers.get('content-type'), /text\/csv/);
+            assert.match(res.headers.get('content-disposition'), /alumnos-por-curso_\d{4}-\d{2}-\d{2}\.csv/);
+            // fetch descarta el BOM al leer el texto: se comprueban los bytes de la respuesta
+            const bytes = new Uint8Array(await res.arrayBuffer());
+            assert.deepEqual([...bytes.slice(0, 3)], [0xEF, 0xBB, 0xBF], 'lleva BOM para Excel');
+            const texto = new TextDecoder('utf-8').decode(bytes);
+            assert.ok(texto.includes('Nivel educativo,Curso,Legajo,Apellido,Nombre'));
+            assert.ok(texto.includes(`${leg(F.a3)},Cabral,Rep`));
+            assert.ok(texto.includes("'=Evil"), 'la fórmula queda neutralizada');
+            assert.ok(!/(^|,)=Evil/m.test(texto));
+
+            const solo = await http('GET', `/api/reportes/alumnos-por-curso?formato=csv`, { token: tokens.padre });
+            assert.equal(solo.status, 403, 'el CSV tiene la misma seguridad');
+        });
+    });
 });

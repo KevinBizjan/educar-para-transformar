@@ -93,6 +93,14 @@ npm run dev
 * `mobile/`: App móvil para padres y tutores (React Native con Expo). Ver [mobile/README.md](mobile/README.md).
 * `docs/PROTOCOLO_IA.md`: Protocolo de validación del código generado con IA y bitácora.
 
+## 📊 Reportes de la Dirección
+
+En el panel del administrador, pestaña **Reportes**, están los 9 listados que pide la Dirección: por alumno, por docente, alumnos por curso, por materia, por deporte (con nivel, horario y profesor) y por recorrido de transporte, y docentes por nivel educativo. Se pueden ver en pantalla o descargar en CSV (se abre en Excel).
+
+* Los datos de deportes, transporte y comedor son los del **mes elegido** (por defecto, el actual), porque las inscripciones son mensuales.
+* Las listas incluyen solo alumnos activos. Los profesores por materia salen de los **Horarios** cargados en Gestión Académica.
+* API: `GET /api/reportes` (catálogo) y `GET /api/reportes/<reporte>`; con `?formato=csv` se descarga el archivo. Solo el administrador tiene acceso.
+
 ## 🔁 Integración continua y flujo de trabajo
 
 **Flujo:** issue → rama → Pull Request (con `Closes #n`) → GitHub Actions → merge a `main` → Render despliega a producción.
