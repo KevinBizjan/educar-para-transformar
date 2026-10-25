@@ -215,6 +215,24 @@ async function seedDatosPrueba() {
         ['Valentina Ruiz', '46999000', 6, 'Primario', 'Mañana', 'Marcela Ruiz', '3624111222', 'mruiz@mail.com', 'Hermana de alumno actual']
     );
 
+    // Horarios de clase de ejemplo: cada materia recibe su día, hora, aula y docente (sin superponer
+    // docentes ni aulas), para que los reportes por materia y por docente muestren datos en la demo.
+    // Solo se cargan junto con los datos de prueba, nunca sobre materias reales.
+    const docentes = (await db.query("SELECT id FROM personal WHERE tipo = 'Docente' AND estado = 'Activo' ORDER BY id")).rows;
+    const aulasSeed = (await db.query('SELECT id FROM aulas ORDER BY id')).rows;
+    const materiasSeed = (await db.query('SELECT id FROM materias ORDER BY id')).rows;
+    if (docentes.length > 0 && aulasSeed.length > 0) {
+        const dos = (n) => String(n).padStart(2, '0');
+        for (const [i, materia] of materiasSeed.entries()) {
+            const hora = 8 + Math.floor(i / 5); // cada materia tiene su propio día y hora
+            await db.query(
+                `INSERT INTO horarios (materia_id, docente_id, aula_id, dia_semana, hora_inicio, hora_fin)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [materia.id, docentes[i % docentes.length].id, aulasSeed[i % aulasSeed.length].id, (i % 5) + 1, `${dos(hora)}:00`, `${dos(hora + 1)}:00`]
+            );
+        }
+    }
+
     console.log('Datos de prueba creados.');
 }
 
