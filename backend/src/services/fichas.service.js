@@ -4,9 +4,9 @@
 const db = require('../config/database');
 const { rangoDelMes, ReglaError } = require('../utils/inscripciones');
 const { describirHorario } = require('../utils/deportes');
-const { diaCapitalizado, seccion, reporte } = require('../utils/reportes');
+const { legajoAlumnoSql, legajoDocenteSql, diaCapitalizado, seccion, reporte } = require('../utils/reportes');
 
-const LEGAJO_ALUMNO = "'A-' || LPAD(a.id::text, 5, '0')";
+const LEGAJO_ALUMNO = legajoAlumnoSql('a.id');
 
 // Ficha de un alumno en un mes: datos, materias con sus profesores, deportes con horario, transporte y comedor.
 async function fichaAlumno(alumnoId, mes, anio) {
@@ -79,7 +79,7 @@ async function fichaAlumno(alumnoId, mes, anio) {
 // Ficha de un docente: datos, cursos a cargo por nivel y horarios de cada curso (según los horarios cargados).
 async function fichaDocente(docenteId) {
     const docente = (await db.query(
-        `SELECT id, 'D-' || LPAD(id::text, 5, '0') AS legajo, dni, apellido, nombre, especialidad, email, telefono, estado
+        `SELECT id, ${legajoDocenteSql('id')} AS legajo, dni, apellido, nombre, especialidad, email, telefono, estado
          FROM personal WHERE id = $1 AND tipo = 'Docente'`, [docenteId]
     )).rows[0];
     if (!docente) throw new ReglaError(404, 'Docente no encontrado');

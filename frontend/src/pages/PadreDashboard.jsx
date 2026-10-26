@@ -306,7 +306,7 @@ const PadreDashboard = () => {
                                 }}>
                                     <div>
                                         <p style={{ fontWeight: 800, color: 'var(--blue)' }}>{h.apellido}, {h.nombre}</p>
-                                        <p style={{ fontSize: '0.75rem', color: '#64748b' }}>DNI: {h.dni}</p>
+                                        <p style={{ fontSize: '0.75rem', color: '#64748b' }}>Legajo: {h.legajo} · DNI: {h.dni}</p>
                                     </div>
                                     <button
                                         onClick={() => desvincularHijo(h.id, `${h.nombre} ${h.apellido}`)}

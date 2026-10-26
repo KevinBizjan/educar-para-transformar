@@ -415,3 +415,76 @@ ALTER TABLE inscripciones_servicio ENABLE ROW LEVEL SECURITY;
 ALTER TABLE facturas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE factura_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comprobantes_pago ENABLE ROW LEVEL SECURITY;
+
+-- --- Restricciones únicas en las tablas del flujo web (ARTE-2, Sprint D) ---
+-- Estas reglas se controlaban solo en el código, así que dos pedidos simultáneos podían duplicar un registro.
+-- Ahora también las garantiza la base. Antes de crear cada índice se eliminan los duplicados EXACTOS que pudieran
+-- existir (se conserva el más reciente, que es el que el código toma como válido; en inscripciones_extra, el más
+-- antiguo, que es la inscripción original). Cada índice se crea en un bloque que, si falla, avisa y sigue: no corta
+-- el arranque del servidor. Es seguro de repetir.
+
+-- Un alumno no se inscribe dos veces a la misma actividad (Cultura e Idioma).
+DELETE FROM inscripciones_extra a USING inscripciones_extra b WHERE a.alumno_id = b.alumno_id AND a.actividad_id = b.actividad_id AND a.id > b.id;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS inscripciones_extra_alumno_actividad_uq ON inscripciones_extra (alumno_id, actividad_id);
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo crear inscripciones_extra_alumno_actividad_uq: %', SQLERRM;
+END $$;
+
+-- Un alumno tiene una sola asignación de transporte (para cambiarla se quita y se vuelve a asignar).
+DELETE FROM transporte_asignaciones a USING transporte_asignaciones b WHERE a.alumno_id = b.alumno_id AND a.id < b.id;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS transporte_asignaciones_alumno_uq ON transporte_asignaciones (alumno_id);
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo crear transporte_asignaciones_alumno_uq: %', SQLERRM;
+END $$;
+
+-- Un registro de comedor por alumno y por día.
+DELETE FROM comedor_asistencias a USING comedor_asistencias b WHERE a.alumno_id = b.alumno_id AND a.fecha = b.fecha AND a.id < b.id;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS comedor_asistencias_alumno_fecha_uq ON comedor_asistencias (alumno_id, fecha);
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo crear comedor_asistencias_alumno_fecha_uq: %', SQLERRM;
+END $$;
+
+-- Una nota por alumno, materia y trimestre.
+DELETE FROM calificaciones a USING calificaciones b WHERE a.alumno_id = b.alumno_id AND a.materia_id = b.materia_id AND a.trimestre = b.trimestre AND a.id < b.id;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS calificaciones_alumno_materia_trimestre_uq ON calificaciones (alumno_id, materia_id, trimestre);
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo crear calificaciones_alumno_materia_trimestre_uq: %', SQLERRM;
+END $$;
+
+-- Una nota por alumno y por deporte (los registros de Cultura e Idioma no tienen legajo_id y quedan afuera).
+DELETE FROM actividad_calificaciones a USING actividad_calificaciones b WHERE a.actividad_id = b.actividad_id AND a.legajo_id = b.legajo_id AND a.id < b.id;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS actividad_calificaciones_actividad_legajo_uq ON actividad_calificaciones (actividad_id, legajo_id) WHERE legajo_id IS NOT NULL;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo crear actividad_calificaciones_actividad_legajo_uq: %', SQLERRM;
+END $$;
+
+-- Sin cursos, materias ni recorridos repetidos. No se borra nada (los alumnos, las materias y las inscripciones
+-- dependen de ellos): si ya hay repetidos, el índice no se crea y la API igual los rechaza.
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS cursos_nivel_division_uq ON cursos (nivel_id, LOWER(division));
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo crear cursos_nivel_division_uq: %', SQLERRM;
+END $$;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS materias_curso_nombre_uq ON materias (curso_id, LOWER(nombre));
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo crear materias_curso_nombre_uq: %', SQLERRM;
+END $$;
+DO $$
+BEGIN
+    CREATE UNIQUE INDEX IF NOT EXISTS transporte_rutas_nombre_uq ON transporte_rutas (LOWER(nombre_ruta));
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'No se pudo crear transporte_rutas_nombre_uq: %', SQLERRM;
+END $$;
