@@ -3,10 +3,10 @@
 //  - Padre: la ficha de cada hijo (profesores por materia, deportes, transporte y comedor) e inscripción
 //    del hijo al cursado (curso con vacantes).
 const db = require('../config/database');
-const { validarMesAnio, ReglaError } = require('../utils/inscripciones');
+const { leerPeriodo, ReglaError } = require('../utils/inscripciones');
 const { vacantes } = require('../utils/vinculos');
 const { fichaAlumno, fichaDocente } = require('../services/fichas.service');
-const { docenteDeCuenta } = require('../services/vinculos.service');
+const { docenteDeCuenta, alumnoDeCuenta } = require('../services/vinculos.service');
 
 const responderError = (res, err) => {
     if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
@@ -32,14 +32,25 @@ exports.misCursos = async (req, res) => {
     }
 };
 
+// --- Alumno: su propia ficha ---
+// Sale de su legajo, así que solo funciona si la Dirección vinculó su cuenta (Usuarios → Vincular cuentas).
+exports.miFicha = async (req, res) => {
+    const { mes, anio, error: errorPeriodo } = leerPeriodo(req.query);
+    if (errorPeriodo) return res.status(400).json({ message: errorPeriodo });
+    try {
+        const alumnoId = await alumnoDeCuenta(req.user.id);
+        if (!alumnoId) return res.json({ vinculado: false });
+        res.json({ vinculado: true, alumno_id: alumnoId, ficha: await fichaAlumno(alumnoId, mes, anio) });
+    } catch (err) {
+        responderError(res, err);
+    }
+};
+
 // --- Padre: ficha completa de un hijo ---
 exports.fichaHijo = async (req, res) => {
     const alumnoId = parseInt(req.params.alumno_id);
     if (!alumnoId) return res.status(400).json({ message: 'Alumno inválido' });
-    const hoy = new Date();
-    const mes = req.query.mes === undefined ? hoy.getMonth() + 1 : Number(req.query.mes);
-    const anio = req.query.anio === undefined ? hoy.getFullYear() : Number(req.query.anio);
-    const errorPeriodo = validarMesAnio(mes, anio);
+    const { mes, anio, error: errorPeriodo } = leerPeriodo(req.query);
     if (errorPeriodo) return res.status(400).json({ message: errorPeriodo });
 
     try {

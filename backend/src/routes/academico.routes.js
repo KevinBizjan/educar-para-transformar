@@ -27,7 +27,8 @@ router.post('/materias', authMiddleware(['admin']), academicoController.createMa
 router.put('/materias/:id', authMiddleware(['admin']), academicoController.updateMateria);
 router.delete('/materias/:id', authMiddleware(['admin']), academicoController.deleteMateria);
 
-// Actividades extracurriculares (deportivas/culturales)
+// Actividades extracurriculares. Los deportes se inscriben por grupo en /api/inscripciones; estas rutas de
+// inscripción del alumno quedan para las actividades de Cultura e Idioma.
 router.get('/actividades', authMiddleware(['admin', 'alumno', 'docente']), academicoController.getActividades);
 router.post('/actividades', authMiddleware(['admin']), academicoController.createActividad);
 router.put('/actividades/:id', authMiddleware(['admin']), academicoController.updateActividad);
@@ -41,6 +42,7 @@ router.get('/mis-hijos/:alumno_id/ficha', authMiddleware(['padre']), portalContr
 router.post('/mis-hijos/:alumno_id/inscribir-curso', authMiddleware(['padre']), portalController.inscribirCurso);
 router.get('/cursos-disponibles', authMiddleware(['padre']), portalController.cursosDisponibles);
 router.get('/mis-cursos', authMiddleware(['docente']), portalController.misCursos);
+router.get('/mi-ficha', authMiddleware(['alumno']), portalController.miFicha);
 router.get('/alumnos-disponibles', authMiddleware(['padre']), academicoController.getAlumnosDisponibles);
 router.post('/vincular-hijo', authMiddleware(['padre']), academicoController.vincularHijo);
 router.delete('/desvincular-hijo/:id', authMiddleware(['padre']), academicoController.desvincularHijo);

@@ -9,7 +9,6 @@ router.get('/notificaciones', authMiddleware(['admin', 'docente', 'alumno', 'pad
 router.post('/notificaciones', authMiddleware(['admin', 'docente']), comunicacionController.crearNotificacion);
 
 router.get('/actividades-extra', comunicacionController.getActividadesExtra);
-router.post('/actividades-extra/inscribir', authMiddleware(['alumno', 'padre']), comunicacionController.inscribirActividad);
 
 router.get('/reportes/stats', authMiddleware(['admin']), reportesController.getEstadisticasGenerales);
 router.get('/reportes/academico', authMiddleware(['admin']), reportesController.getReporteAcademico);

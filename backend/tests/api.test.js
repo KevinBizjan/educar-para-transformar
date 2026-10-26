@@ -559,9 +559,11 @@ describe('API Educar para Transformar', { skip }, () => {
             for (const p of [A, B]) await api('DELETE', `/api/auth/users/${p.id}`, { token: tokens.admin });
         });
 
-        it('solo los padres y el administrador acceden', async () => {
+        it('acceden los padres, el administrador y los alumnos (solo a sus deportes); el docente no', async () => {
             assert.equal((await api('GET', '/api/inscripciones/catalogo')).status, 403);
-            assert.equal((await api('GET', '/api/inscripciones/catalogo', { token: tokens.alumno })).status, 403);
+            const delAlumno = await api('GET', '/api/inscripciones/catalogo', { token: tokens.alumno });
+            assert.equal(delAlumno.status, 200);
+            assert.ok(delAlumno.data.servicios.every(s => s.tipo === 'Deporte'), 'el alumno solo ve deportes');
             assert.equal((await api('GET', '/api/inscripciones/catalogo', { token: tokens.docente })).status, 403);
             assert.equal((await api('GET', '/api/inscripciones/catalogo', { token: A.token })).status, 200);
         });
@@ -1587,6 +1589,334 @@ describe('API Educar para Transformar', { skip }, () => {
             assert.deepEqual([a.status, b.status].sort(), [200, 400], `respuestas: ${JSON.stringify([a.data, b.data])}`);
             const n = (await db.query('SELECT COUNT(*)::int AS n FROM alumnos WHERE curso_id = $1', [F.cUno])).rows[0].n;
             assert.equal(n, 1, 'el curso no supera su cupo');
+        });
+    });
+
+    describe('Portal del alumno y deportes en el sistema nuevo (ARTE-2, Sprint C2)', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const tag = String(Date.now());
+        const PASS = 'Inicial1!x';
+        const hoy = new Date();
+        const MES = hoy.getMonth() + 1;
+        const ANIO = hoy.getFullYear();
+        const HOY = hoy.toLocaleDateString('en-CA');
+        const F = {};
+        const cuentas = {};
+        const alumnosCreados = [];
+        const actividades = [];
+
+        const crearCuenta = async (clave, rol) => {
+            const username = `c2-${clave}-${tag}`;
+            const r = await api('POST', '/api/auth/users', { token: tokens.admin, body: { nombre: 'Cuenta Portal', username, password: PASS, rol } });
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            await login(username, PASS);
+            cuentas[clave] = { id: r.data.id, username };
+        };
+        const tk = (clave) => tokens[cuentas[clave].username];
+        const actividad = async (tipo, nombre) => {
+            const id = (await db.query(
+                "INSERT INTO actividades_extra (nombre, tipo, horario, cupo_max) VALUES ($1, $2, 'x', 30) RETURNING id", [`C2-${tag}-${nombre}`, tipo])).rows[0].id;
+            actividades.push(id);
+            return id;
+        };
+        const alumno = async (apellido, estado = 'Activo') => {
+            const id = (await db.query(
+                `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, curso_id, estado)
+                 VALUES ('Portal', $1, $2, '2015-05-05', $3, $4) RETURNING id`, [apellido, dniUnico(), F.curso, estado])).rows[0].id;
+            alumnosCreados.push(id);
+            return id;
+        };
+        const servicio = async (body) => {
+            const r = await api('POST', '/api/inscripciones/servicios', { token: tokens.admin, body: { precio_mensual: 1000, ...body } });
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            return r.data.id;
+        };
+        const grupo = (nombre, actividadId, docenteId, dia, ini, fin) => servicio({
+            tipo: 'Deporte', nombre: `C2-${nombre}-${tag}`, actividad_id: actividadId, docente_id: docenteId, nivel_id: apoyo.nivel,
+            dia_semana: dia, hora_inicio: ini, hora_fin: fin,
+        });
+        const vincular = (tipo, id, user_id) => api('PUT', `/api/vinculos/${tipo}/${id}`, { token: tokens.admin, body: { user_id } });
+        const inscribir = (token, alumnoId, servicioId) => api('POST', '/api/inscripciones', { token, body: { alumno_id: alumnoId, servicio_id: servicioId, mes: MES, anio: ANIO } });
+        const inscribirOk = async (token, alumnoId, servicioId) => {
+            const r = await inscribir(token, alumnoId, servicioId);
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            return r.data.id;
+        };
+        const inscriptos = (clave, actId, query = '') => api('GET', `/api/academico/actividades/${actId}/inscriptos${query}`, { token: tk(clave) });
+        const asistencia = (clave, actId, alumnoId, extra = {}) => api('POST', '/api/academico/actividades/asistencia', {
+            token: tk(clave), body: { actividad_id: actId, alumno_id: alumnoId, estado: 'Presente', fecha: HOY, ...extra } });
+        const calificacion = (clave, actId, alumnoId, nota) => api('POST', '/api/academico/actividades/calificacion', {
+            token: tk(clave), body: { actividad_id: actId, alumno_id: alumnoId, nota } });
+
+        before(async () => {
+            for (const [clave, rol] of [['alu1', 'alumno'], ['alu2', 'alumno'], ['alu3', 'alumno'], ['docA', 'docente'], ['docB', 'docente'], ['docLibre', 'docente'], ['padre', 'padre']]) {
+                await crearCuenta(clave, rol);
+            }
+            F.curso = (await db.query('INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, 30) RETURNING id', [apoyo.nivel, `C2-${tag}`])).rows[0].id;
+            F.dA = await nuevoDocente('PortalA');
+            F.dB = await nuevoDocente('PortalB');
+            F.a1 = await alumno('Aguilar');
+            F.a2 = await alumno('Benitez');
+            F.a3 = await alumno('Cardozo');
+            F.aInactivo = await alumno('Duarte', 'Inactivo');
+            assert.equal((await vincular('alumnos', F.a1, cuentas.alu1.id)).status, 200);
+            assert.equal((await vincular('alumnos', F.a2, cuentas.alu2.id)).status, 200);
+            assert.equal((await vincular('docentes', F.dA, cuentas.docA.id)).status, 200);
+            assert.equal((await vincular('docentes', F.dB, cuentas.docB.id)).status, 200);
+
+            F.actFutbol = await actividad('Deporte', 'Futbol');
+            F.actNatacion = await actividad('Deporte', 'Natacion');
+            F.actTenis = await actividad('Deporte', 'Tenis');
+            F.actHockey = await actividad('Deporte', 'Hockey');
+            F.actTeatro = await actividad('Cultura', 'Teatro');
+            F.g1 = await grupo('Futbol', F.actFutbol, F.dA, 1, '16:00', '17:00');
+            F.g2 = await grupo('Natacion', F.actNatacion, F.dA, 2, '16:00', '17:00');
+            F.g3 = await grupo('Tenis', F.actTenis, F.dA, 3, '16:00', '17:00');
+            F.gB = await grupo('Hockey', F.actHockey, F.dB, 4, '16:00', '17:00');
+            F.gChoque = await grupo('Choque', await actividad('Deporte', 'Choque'), F.dB, 1, '16:30', '17:30');
+            F.transporte = await servicio({ tipo: 'Transporte', nombre: `C2-Ruta-${tag}`, ruta_id: apoyo.rutas[0] });
+            F.comedor = await servicio({ tipo: 'Comedor', nombre: `C2-Comedor-${tag}`, precio_mensual: 500 });
+        });
+
+        after(async () => {
+            await db.query('DELETE FROM actividad_asistencias WHERE actividad_id = ANY($1)', [actividades]);
+            await db.query('DELETE FROM actividad_calificaciones WHERE actividad_id = ANY($1)', [actividades]);
+            await db.query('DELETE FROM inscripciones_extra WHERE actividad_id = ANY($1)', [actividades]);
+            await db.query('DELETE FROM inscripciones_servicio WHERE alumno_id = ANY($1)', [alumnosCreados]);
+            await db.query('DELETE FROM servicios WHERE nombre LIKE $1', [`C2-%-${tag}`]);
+            await db.query('DELETE FROM actividades_extra WHERE id = ANY($1)', [actividades]);
+            await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnosCreados]);
+            await db.query('DELETE FROM cursos WHERE id = $1', [F.curso]);
+            for (const c of Object.values(cuentas)) await api('DELETE', `/api/auth/users/${c.id}`, { token: tokens.admin });
+        });
+
+        describe('ficha propia y catálogo del alumno', () => {
+            it('el alumno vinculado ve su propia ficha; sin vínculo, un aviso', async () => {
+                const r = await api('GET', '/api/academico/mi-ficha', { token: tk('alu1') });
+                assert.equal(r.status, 200);
+                assert.equal(r.data.vinculado, true);
+                assert.equal(r.data.alumno_id, F.a1);
+                assert.equal(r.data.ficha.secciones[0].filas[0].apellido, 'Aguilar');
+                assert.ok(r.data.ficha.secciones.some(s => s.titulo.startsWith('Deportes y horarios')));
+                const libre = await api('GET', '/api/academico/mi-ficha', { token: tk('alu3') });
+                assert.deepEqual(libre.data, { vinculado: false });
+            });
+
+            it('la ficha propia es solo para alumnos y valida el período', async () => {
+                assert.equal((await api('GET', '/api/academico/mi-ficha')).status, 403);
+                for (const t of [tokens.admin, tokens.padre, tokens.docente]) {
+                    assert.equal((await api('GET', '/api/academico/mi-ficha', { token: t })).status, 403);
+                }
+                assert.equal((await api('GET', '/api/academico/mi-ficha?mes=13&anio=2026', { token: tk('alu1') })).status, 400);
+            });
+
+            it('el catálogo del alumno trae solo deportes; el del padre, todos los servicios', async () => {
+                const alumnoCat = await api('GET', '/api/inscripciones/catalogo', { token: tk('alu1') });
+                assert.equal(alumnoCat.status, 200);
+                const ids = alumnoCat.data.servicios.map(s => s.id);
+                assert.ok(ids.includes(F.g1) && ids.includes(F.gB));
+                assert.ok(!ids.includes(F.transporte) && !ids.includes(F.comedor));
+                assert.ok(alumnoCat.data.servicios.every(s => s.tipo === 'Deporte'));
+                const familia = await api('GET', '/api/inscripciones/catalogo', { token: tokens.padre });
+                assert.ok(familia.data.servicios.some(s => s.id === F.transporte) && familia.data.servicios.some(s => s.id === F.comedor));
+            });
+        });
+
+        describe('el alumno gestiona sus propios deportes', () => {
+            it('se inscribe a un deporte con su propio legajo y le aparece en su ficha', async () => {
+                const id = await inscribirOk(tk('alu1'), F.a1, F.g1);
+                const propias = await api('GET', `/api/inscripciones/alumno/${F.a1}`, { token: tk('alu1') });
+                assert.equal(propias.status, 200);
+                assert.ok(propias.data.some(i => i.id === id));
+                const ficha = await api('GET', '/api/academico/mi-ficha', { token: tk('alu1') });
+                const deportes = ficha.data.ficha.secciones.find(s => s.titulo.startsWith('Deportes y horarios')).filas;
+                assert.equal(deportes.length, 1);
+                assert.equal(deportes[0].grupo, `C2-Futbol-${tag}`);
+                assert.match(deportes[0].horario, /lunes 16:00/);
+            });
+
+            it('no puede inscribir ni ver a otro alumno, ni una cuenta sin vincular', async () => {
+                assert.equal((await inscribir(tk('alu1'), F.a2, F.g1)).status, 403, 'legajo de otro alumno');
+                assert.equal((await inscribir(tk('alu1'), F.a3, F.g1)).status, 403, 'alumno sin cuenta');
+                assert.equal((await api('GET', `/api/inscripciones/alumno/${F.a2}`, { token: tk('alu1') })).status, 403);
+                assert.equal((await inscribir(tk('alu3'), F.a1, F.g2)).status, 403, 'cuenta sin vincular');
+                assert.equal((await inscribir(tk('alu3'), F.a3, F.g2)).status, 403);
+            });
+
+            it('solo gestiona deportes: transporte y comedor los decide la familia', async () => {
+                assert.equal((await inscribir(tk('alu1'), F.a1, F.transporte)).status, 403);
+                assert.equal((await inscribir(tk('alu1'), F.a1, F.comedor)).status, 403);
+                // una inscripción de transporte hecha por la familia tampoco la puede dar de baja el alumno
+                const idTransporte = await inscribirOk(tokens.admin, F.a1, F.transporte);
+                const baja = await api('DELETE', `/api/inscripciones/${idTransporte}`, { token: tk('alu1') });
+                assert.equal(baja.status, 403);
+                const sigue = await db.query('SELECT estado FROM inscripciones_servicio WHERE id = $1', [idTransporte]);
+                assert.equal(sigue.rows[0].estado, 'Activa');
+            });
+
+            it('mantiene las reglas: máximo de deportes por mes y superposición de horarios', async () => {
+                assert.equal((await inscribir(tk('alu1'), F.a1, F.gChoque)).status, 409, 'se pisa con el fútbol del lunes');
+                await inscribirOk(tk('alu1'), F.a1, F.g2);
+                const tercero = await inscribir(tk('alu1'), F.a1, F.g3);
+                assert.equal(tercero.status, 409);
+                assert.match(tercero.data.message, /máximo en 2 deportes/);
+            });
+
+            it('se da de baja de su deporte y no de los de otro alumno', async () => {
+                const idDeA2 = await inscribirOk(tokens.admin, F.a2, F.g3);
+                const ajena = await api('DELETE', `/api/inscripciones/${idDeA2}`, { token: tk('alu1') });
+                assert.equal(ajena.status, 403);
+                const propia = (await api('GET', `/api/inscripciones/alumno/${F.a1}`, { token: tk('alu1') })).data.find(i => i.servicio_id === F.g2);
+                const baja = await api('DELETE', `/api/inscripciones/${propia.id}`, { token: tk('alu1') });
+                assert.equal(baja.status, 200);
+                const activas = (await api('GET', `/api/inscripciones/alumno/${F.a1}`, { token: tk('alu1') })).data;
+                assert.ok(!activas.some(i => i.servicio_id === F.g2));
+                // el resto del resumen sigue siendo solo para padres
+                assert.equal((await api('GET', '/api/inscripciones/resumen-familia', { token: tk('alu1') })).status, 403);
+            });
+        });
+
+        describe('el flujo anterior queda solo para Cultura e Idioma', () => {
+            it('los deportes ya no se inscriben por actividad', async () => {
+                const r = await api('POST', '/api/academico/inscribir-actividad', { token: tk('alu1'), body: { actividad_id: F.actFutbol } });
+                assert.equal(r.status, 409);
+                assert.match(r.data.message, /por grupo/);
+            });
+
+            it('Cultura e Idioma siguen funcionando, y los deportes no se listan en ese flujo', async () => {
+                const r = await api('POST', '/api/academico/inscribir-actividad', { token: tk('alu1'), body: { actividad_id: F.actTeatro } });
+                assert.equal(r.status, 201, JSON.stringify(r.data));
+                // un registro viejo de deporte (de antes del cambio) no aparece en "mis inscripciones" ni en el listado del alumno
+                await db.query('INSERT INTO inscripciones_extra (alumno_id, actividad_id) VALUES ($1, $2)', [cuentas.alu1.id, F.actFutbol]);
+                const mis = await api('GET', '/api/academico/mis-inscripciones', { token: tk('alu1') });
+                assert.deepEqual(mis.data.map(a => a.id), [F.actTeatro]);
+                const lista = await api('GET', '/api/academico/actividades', { token: tk('alu1') });
+                assert.ok(lista.data.some(a => a.id === F.actTeatro));
+                assert.ok(lista.data.every(a => a.tipo !== 'Deporte'));
+                const baja = await api('DELETE', `/api/academico/desinscribir-actividad/${F.actTeatro}`, { token: tk('alu1') });
+                assert.equal(baja.status, 200);
+            });
+
+            it('se retiró la inscripción que aceptaba cualquier alumno_id', async () => {
+                for (const t of [tk('alu1'), tokens.padre]) {
+                    const r = await api('POST', '/api/comunicacion/actividades-extra/inscribir', { token: t, body: { alumno_id: F.a2, actividad_id: F.actTeatro } });
+                    assert.equal(r.status, 404);
+                }
+            });
+        });
+
+        describe('panel de actividades del docente con deportes por grupo', () => {
+            it('el docente vinculado ve solo los deportes que dicta, con sus inscriptos del mes', async () => {
+                const lista = await api('GET', '/api/academico/actividades', { token: tk('docA') });
+                const propias = lista.data.filter(a => a.nombre.startsWith(`C2-${tag}`));
+                const nombres = propias.map(a => a.nombre.replace(`C2-${tag}-`, '')).sort();
+                assert.deepEqual(nombres, ['Futbol', 'Natacion', 'Teatro', 'Tenis'], 'sus deportes y las actividades de Cultura');
+                assert.equal(propias.find(a => a.id === F.actFutbol).inscriptos, 1);
+                const deB = await api('GET', '/api/academico/actividades', { token: tk('docB') });
+                assert.ok(deB.data.some(a => a.id === F.actHockey) && !deB.data.some(a => a.id === F.actFutbol));
+                // el administrador ve todos
+                const admin = await api('GET', '/api/academico/actividades', { token: tokens.admin });
+                assert.ok([F.actFutbol, F.actHockey, F.actTeatro].every(id => admin.data.some(a => a.id === id)));
+            });
+
+            it('lista a los alumnos inscriptos en sus grupos, por legajo y del mes', async () => {
+                const r = await inscriptos('docA', F.actFutbol);
+                assert.equal(r.status, 200);
+                assert.deepEqual(r.data.map(i => [i.alumno_id, i.alumno_nombre]), [[F.a1, 'Aguilar, Portal']]);
+                const otroMes = await inscriptos('docA', F.actFutbol, `?mes=${MES === 12 ? 1 : MES + 1}&anio=${MES === 12 ? ANIO + 1 : ANIO}`);
+                assert.deepEqual(otroMes.data, []);
+                assert.equal((await inscriptos('docA', F.actFutbol, '?mes=13&anio=2026')).status, 400);
+                assert.equal((await inscriptos('docA', 987654321)).status, 404);
+                assert.equal((await api('GET', '/api/academico/actividades/abc/inscriptos', { token: tk('docA') })).status, 400);
+            });
+
+            it('no muestra a quien se dio de baja ni a los alumnos inactivos', async () => {
+                const idBaja = await inscribirOk(tokens.admin, F.a2, F.g1);
+                assert.deepEqual((await inscriptos('docA', F.actFutbol)).data.map(i => i.alumno_id).sort(), [F.a1, F.a2].sort());
+                await api('DELETE', `/api/inscripciones/${idBaja}`, { token: tokens.admin });
+                await inscribirOk(tokens.admin, F.aInactivo, F.g1);
+                assert.deepEqual((await inscriptos('docA', F.actFutbol)).data.map(i => i.alumno_id), [F.a1]);
+            });
+
+            it('un docente solo ve los inscriptos de sus grupos; sin vincular mantiene la vista completa', async () => {
+                assert.deepEqual((await inscriptos('docB', F.actFutbol)).data, [], 'el fútbol lo dicta otro docente');
+                const sinVincular = await inscriptos('docLibre', F.actFutbol);
+                assert.deepEqual(sinVincular.data.map(i => i.alumno_id), [F.a1]);
+            });
+
+            it('registra la asistencia por legajo, solo de alumnos inscriptos en sus grupos', async () => {
+                const ok = await asistencia('docA', F.actFutbol, F.a1);
+                assert.equal(ok.status, 201, JSON.stringify(ok.data));
+                const fila = (await db.query('SELECT alumno_id, legajo_id, fecha::text AS fecha, estado FROM actividad_asistencias WHERE id = $1', [ok.data.id])).rows[0];
+                assert.equal(fila.legajo_id, F.a1);
+                assert.equal(fila.alumno_id, null);
+                assert.equal(fila.fecha, HOY);
+                assert.equal(fila.estado, 'Presente');
+
+                assert.equal((await asistencia('docA', F.actFutbol, F.a3)).status, 409, 'alumno no inscripto');
+                assert.equal((await asistencia('docB', F.actFutbol, F.a1)).status, 409, 'grupo de otro docente');
+                assert.equal((await asistencia('docA', F.actFutbol, F.a1, { fecha: '2030-01-15' })).status, 409, 'mes sin inscripción');
+                assert.equal((await asistencia('docA', F.actFutbol, F.a1, { fecha: '2026-02-30' })).status, 400, 'fecha inexistente');
+                assert.equal((await asistencia('docA', F.actFutbol, F.a1, { estado: 'Casi' })).status, 400);
+                assert.equal((await asistencia('docA', 987654321, F.a1)).status, 404);
+                const sinFecha = await asistencia('docA', F.actFutbol, F.a1, { fecha: undefined });
+                assert.equal(sinFecha.status, 201, 'sin fecha usa hoy');
+            });
+
+            it('califica por legajo: crea, actualiza y se refleja como última nota', async () => {
+                const primera = await calificacion('docA', F.actFutbol, F.a1, 7);
+                assert.equal(primera.status, 201, JSON.stringify(primera.data));
+                const segunda = await calificacion('docA', F.actFutbol, F.a1, 9);
+                assert.equal(segunda.status, 200);
+                assert.equal(segunda.data.id, primera.data.id);
+                const filas = (await db.query('SELECT nota, legajo_id, alumno_id FROM actividad_calificaciones WHERE actividad_id = $1', [F.actFutbol])).rows;
+                assert.deepEqual(filas, [{ nota: 9, legajo_id: F.a1, alumno_id: null }]);
+                assert.equal((await inscriptos('docA', F.actFutbol)).data[0].ultima_nota, 9);
+
+                assert.equal((await calificacion('docA', F.actFutbol, F.a3, 8)).status, 409, 'no inscripto');
+                assert.equal((await calificacion('docB', F.actFutbol, F.a1, 8)).status, 409, 'grupo de otro docente');
+                assert.equal((await calificacion('docA', F.actFutbol, F.a1, 11)).status, 400);
+                assert.equal((await calificacion('docA', F.actFutbol, F.a1, 'diez')).status, 400);
+                assert.equal((await calificacion('docA', 987654321, F.a1, 8)).status, 404);
+            });
+
+            it('Cultura e Idioma siguen con el sistema anterior (por cuenta de alumno)', async () => {
+                const id = await api('POST', '/api/academico/inscribir-actividad', { token: tk('alu2'), body: { actividad_id: F.actTeatro } });
+                assert.equal(id.status, 201);
+                const lista = await inscriptos('docA', F.actTeatro);
+                assert.equal(lista.status, 200);
+                assert.deepEqual(lista.data.map(i => i.alumno_id), [cuentas.alu2.id]);
+                const ok = await asistencia('docA', F.actTeatro, cuentas.alu2.id);
+                assert.equal(ok.status, 201);
+                const fila = (await db.query('SELECT alumno_id, legajo_id FROM actividad_asistencias WHERE id = $1', [ok.data.id])).rows[0];
+                assert.equal(fila.alumno_id, cuentas.alu2.id);
+                assert.equal(fila.legajo_id, null);
+                assert.equal((await calificacion('docA', F.actTeatro, cuentas.alu2.id, 6)).status, 201);
+            });
+        });
+
+        describe('migración de los registros viejos', () => {
+            it('completa legajo_id con el legajo de la cuenta vinculada, sin tocar el resto y sin duplicar al repetirse', async () => {
+                const schema = fs.readFileSync(path.join(__dirname, '../src/config/schema.sql'), 'utf8');
+                const vieja = (await db.query(
+                    "INSERT INTO actividad_asistencias (actividad_id, alumno_id, fecha, estado) VALUES ($1, $2, $3, 'Tarde') RETURNING id",
+                    [F.actTeatro, cuentas.alu1.id, HOY])).rows[0].id;
+                const sinCuenta = (await db.query(
+                    "INSERT INTO actividad_asistencias (actividad_id, alumno_id, fecha, estado) VALUES ($1, $2, $3, 'Tarde') RETURNING id",
+                    [F.actTeatro, cuentas.alu3.id, HOY])).rows[0].id;
+                const totalAntes = (await db.query('SELECT COUNT(*)::int AS n FROM actividad_asistencias')).rows[0].n;
+
+                await db.query(schema);
+                await db.query(schema); // se ejecuta en cada arranque: tiene que poder repetirse
+
+                const filas = (await db.query('SELECT id, alumno_id, legajo_id FROM actividad_asistencias WHERE id = ANY($1) ORDER BY id', [[vieja, sinCuenta]])).rows;
+                assert.deepEqual(filas, [
+                    { id: vieja, alumno_id: cuentas.alu1.id, legajo_id: F.a1 },
+                    { id: sinCuenta, alumno_id: cuentas.alu3.id, legajo_id: null },
+                ]);
+                assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM actividad_asistencias')).rows[0].n, totalAntes, 'no se borró ni se duplicó nada');
+            });
         });
     });
 });

@@ -202,6 +202,8 @@ CREATE TABLE IF NOT EXISTS actividades_extra (
 -- El alumno se autoinscribe con su propia cuenta (req.user.id en
 -- academico.controller.js inscribirActividad), no con el id de su legajo.
 -- Mismo criterio aplica a actividad_asistencias y actividad_calificaciones.
+-- Desde el Sprint C2 esta tabla se usa solo para Cultura e Idioma: los deportes se inscriben por grupo en
+-- inscripciones_servicio. Los registros viejos de deportes quedan como historial, sin uso.
 CREATE TABLE IF NOT EXISTS inscripciones_extra (
     id SERIAL PRIMARY KEY,
     alumno_id INTEGER REFERENCES users(id),
@@ -260,6 +262,17 @@ ALTER TABLE alumnos ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id
 ALTER TABLE personal ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS alumnos_user_id_uk ON alumnos (user_id) WHERE user_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS personal_user_id_uk ON personal (user_id) WHERE user_id IS NOT NULL;
+
+-- --- Asistencia y notas de los deportes por legajo (ARTE-2, Sprint C2) ---
+-- Los deportes pasaron al sistema de inscripciones por grupo, que trabaja con el legajo del alumno (alumnos.id),
+-- mientras que actividad_asistencias/actividad_calificaciones guardan la CUENTA (alumno_id -> users.id).
+-- legajo_id es la referencia nueva: los registros nuevos de deportes la usan y alumno_id queda en NULL. Nada se
+-- borra: los registros viejos conservan alumno_id y, si esa cuenta ya está vinculada a un legajo, se les completa
+-- legajo_id (el UPDATE es seguro de repetir en cada arranque).
+ALTER TABLE actividad_asistencias ADD COLUMN IF NOT EXISTS legajo_id INTEGER REFERENCES alumnos(id);
+ALTER TABLE actividad_calificaciones ADD COLUMN IF NOT EXISTS legajo_id INTEGER REFERENCES alumnos(id);
+UPDATE actividad_asistencias t SET legajo_id = a.id FROM alumnos a WHERE a.user_id = t.alumno_id AND t.legajo_id IS NULL;
+UPDATE actividad_calificaciones t SET legajo_id = a.id FROM alumnos a WHERE a.user_id = t.alumno_id AND t.legajo_id IS NULL;
 
 -- --- Asistencia por materia: un solo registro por alumno, día y materia (HU1) ---
 -- materia_id es opcional: NULL = asistencia general del día (sin materia).
