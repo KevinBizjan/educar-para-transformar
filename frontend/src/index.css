@@ -850,6 +850,79 @@ input:focus, select:focus, textarea:focus {
   transform: translateY(-4px);
   box-shadow: var(--shadow);
 }
+
+/* ─────────────────────────────────────────
+   ACCESOS DE LOS PANELES (padre y docente)
+───────────────────────────────────────── */
+.accesos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.acceso {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: var(--white);
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.acceso:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow);
+  border-color: var(--blue);
+}
+.acceso:focus-visible {
+  outline: 3px solid rgba(26,95,168,0.35);
+  outline-offset: 2px;
+  border-color: var(--blue);
+}
+.acceso-icono { font-size: 1.8rem; line-height: 1; }
+.acceso-titulo { font-weight: 800; font-size: 1rem; color: var(--blue); }
+.acceso-estado { font-size: 0.8rem; color: var(--text-sm); }
+.acceso-aviso {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #fff;
+  background: var(--orange);
+  border-radius: 999px;
+}
+.acceso-ayuda { font-size: 0.85rem; color: var(--text-sm); margin: 0 0 14px; }
+.acceso-nav { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+.acceso-volver {
+  padding: 8px 16px;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: var(--blue);
+  background: transparent;
+  border: 2px solid var(--blue);
+  border-radius: 50px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.acceso-volver:hover { color: #fff; background: var(--blue); }
+.acceso-ubicacion { font-weight: 800; color: var(--text); }
+@media (max-width: 600px) {
+  .accesos { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .acceso { padding: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .acceso:hover { transform: none; }
+}
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
