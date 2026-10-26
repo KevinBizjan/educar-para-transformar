@@ -1919,4 +1919,404 @@ describe('API Educar para Transformar', { skip }, () => {
             });
         });
     });
+
+    describe('Reglas sueltas: legajo, unicidad, transporte y comedor (ARTE-2, Sprint D)', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const { legajoAlumnoSql } = require('../src/utils/reportes');
+        const tag = String(Date.now());
+        const PASS = 'Inicial1!x';
+        const hoy = new Date();
+        const MES = hoy.getMonth() + 1;
+        const ANIO = hoy.getFullYear();
+        const F = {};
+        const alumnosCreados = [];
+        const cursosCreados = [];
+        const serviciosCreados = [];
+        const leg = (prefijo, id) => `${prefijo}-${String(id).padStart(5, '0')}`;
+
+        const alumno = async (apellido, estado = 'Activo', cursoId = F.curso) => {
+            const id = (await db.query(
+                `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, curso_id, estado)
+                 VALUES ('Regla', $1, $2, '2015-05-05', $3, $4) RETURNING id`, [apellido, dniUnico(), cursoId, estado])).rows[0].id;
+            alumnosCreados.push(id);
+            return id;
+        };
+        const asignar = (alumno_id, ruta_id, punto_encuentro, token = tokens.admin) =>
+            api('POST', '/api/servicios/transporte/asignar', { token, body: { alumno_id, ruta_id, punto_encuentro } });
+        const rutaDesdeApi = async (id) => (await api('GET', '/api/servicios/transporte/rutas', { token: tokens.admin })).data.find(r => r.id === id);
+        const comedor = (body, token = tokens.docente) => api('POST', '/api/servicios/comedor/asistencia', { token, body });
+        const codigoDeError = async (promesa) => { try { await promesa; return null; } catch (e) { return e.code; } };
+
+        before(async () => {
+            F.curso = (await db.query('INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, 40) RETURNING id', [apoyo.nivel, `D-${tag}`])).rows[0].id;
+            cursosCreados.push(F.curso);
+            F.ruta = apoyo.rutas[apoyo.rutas.length - 1];
+            F.rutaOtra = apoyo.rutas[0];
+            F.capacidadOriginal = (await db.query('SELECT capacidad_max FROM transporte_rutas WHERE id = $1', [F.ruta])).rows[0].capacidad_max;
+            // El recorrido tiene que tener su servicio de transporte para probar que los inscriptos del mes también ocupan lugar.
+            let servicio = (await db.query("SELECT id FROM servicios WHERE tipo = 'Transporte' AND ruta_id = $1 LIMIT 1", [F.ruta])).rows[0];
+            if (!servicio) {
+                servicio = (await db.query(
+                    "INSERT INTO servicios (tipo, nombre, precio_mensual, ruta_id) VALUES ('Transporte', $1, 1000, $2) RETURNING id", [`D-Ruta-${tag}`, F.ruta])).rows[0];
+                serviciosCreados.push(servicio.id);
+            }
+            F.servicioRuta = servicio.id;
+            F.ocupadosInicial = (await rutaDesdeApi(F.ruta)).ocupados;
+            F.aTransp = await alumno('Aranda');
+            F.bTransp = await alumno('Bustos');
+            F.cTransp = await alumno('Cuello');
+            F.inactivo = await alumno('Dorrego', 'Inactivo');
+            F.viajero = await alumno('Escalante');
+            F.comedor = await alumno('Fuentes');
+            F.dup = await alumno('Garay');
+        });
+
+        after(async () => {
+            await db.query('UPDATE transporte_rutas SET capacidad_max = $1 WHERE id = $2', [F.capacidadOriginal, F.ruta]);
+            await db.query('DELETE FROM comedor_asistencias WHERE alumno_id = ANY($1)', [alumnosCreados]);
+            await db.query('DELETE FROM transporte_asignaciones WHERE alumno_id = ANY($1)', [alumnosCreados]);
+            await db.query('DELETE FROM inscripciones_servicio WHERE alumno_id = ANY($1)', [alumnosCreados]);
+            await db.query('DELETE FROM materias WHERE curso_id = ANY($1)', [cursosCreados]);
+            await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnosCreados]);
+            await db.query('DELETE FROM cursos WHERE id = ANY($1)', [cursosCreados]);
+            if (serviciosCreados.length) await db.query('DELETE FROM servicios WHERE id = ANY($1)', [serviciosCreados]);
+        });
+
+        describe('legajo', () => {
+            it('los listados traen el legajo con el mismo formato que los reportes', async () => {
+                const alumnos = await api('GET', '/api/academico/alumnos', { token: tokens.admin });
+                assert.equal(alumnos.data.find(a => a.id === F.aTransp).legajo, leg('A', F.aTransp));
+
+                const docenteId = await nuevoDocente('LegajoDoc');
+                const administrativoId = await nuevoDocente('LegajoAdm', { tipo: 'Administrativo' });
+                const personal = (await api('GET', '/api/financiero/personal', { token: tokens.admin })).data;
+                assert.equal(personal.find(p => p.id === docenteId).legajo, leg('D', docenteId), 'los docentes llevan D');
+                assert.equal(personal.find(p => p.id === administrativoId).legajo, leg('P', administrativoId), 'el resto del personal lleva P');
+
+                const disponibles = await api('GET', '/api/academico/alumnos-disponibles', { token: tokens.padre });
+                assert.equal(disponibles.data.find(a => a.id === F.aTransp).legajo, leg('A', F.aTransp));
+            });
+
+            it('el legajo de un hijo vinculado se ve en "mis hijos"', async () => {
+                await db.query('UPDATE alumnos SET tutor_id = $1 WHERE id = $2', [users.padre.id, F.aTransp]);
+                try {
+                    const hijos = await api('GET', '/api/academico/mis-hijos', { token: tokens.padre });
+                    assert.equal(hijos.data.find(h => h.id === F.aTransp).legajo, leg('A', F.aTransp));
+                } finally {
+                    await db.query('UPDATE alumnos SET tutor_id = NULL WHERE id = $1', [F.aTransp]);
+                }
+            });
+
+            it('con muchas cifras el legajo no se recorta', async () => {
+                const sql = async (id) => (await db.query(`SELECT ${legajoAlumnoSql(String(id))} AS l`)).rows[0].l;
+                assert.equal(await sql(12), 'A-00012');
+                assert.equal(await sql(99999), 'A-99999');
+                assert.equal(await sql(123456), 'A-123456');
+            });
+        });
+
+        describe('cursos y materias sin repetir', () => {
+            it('un curso no se repite dentro del nivel, aunque cambien mayúsculas o espacios', async () => {
+                const crear = (division, nivel_id = apoyo.nivel) => api('POST', '/api/academico/cursos', { token: tokens.admin, body: { nivel_id, division, cupo: 20 } });
+                const primero = await crear(`Z${tag}`);
+                assert.equal(primero.status, 201, JSON.stringify(primero.data));
+                cursosCreados.push(primero.data.id);
+                for (const repetido of [`Z${tag}`, `z${tag}`, `  Z${tag} `]) {
+                    const r = await crear(repetido);
+                    assert.equal(r.status, 409, `"${repetido}" debería rechazarse`);
+                    assert.match(r.data.message, /esa división/);
+                }
+                const otroNivel = await crear(`Z${tag}`, apoyo.nivel2);
+                assert.equal(otroNivel.status, 201, 'la misma división en otro nivel sí se permite');
+                cursosCreados.push(otroNivel.data.id);
+                assert.equal((await crear(`Y${tag}`, 987654321)).status, 404, 'nivel inexistente');
+                assert.equal((await crear('   ')).status, 400, 'división en blanco');
+            });
+
+            it('una materia no se repite dentro del curso, pero sí puede estar en otro', async () => {
+                const crear = (nombre, curso_id = F.curso) => api('POST', '/api/academico/materias', { token: tokens.admin, body: { nombre, curso_id } });
+                const primera = await crear('Geografia');
+                assert.equal(primera.status, 201, JSON.stringify(primera.data));
+                for (const repetida of ['Geografia', 'geografia', ' GEOGRAFIA ']) {
+                    assert.equal((await crear(repetida)).status, 409, `"${repetida}" debería rechazarse`);
+                }
+                const otroCurso = (await db.query('INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, 10) RETURNING id', [apoyo.nivel, `DM-${tag}`])).rows[0].id;
+                cursosCreados.push(otroCurso);
+                assert.equal((await crear('Geografia', otroCurso)).status, 201);
+                assert.equal((await crear('Historia', 987654321)).status, 404, 'curso inexistente');
+            });
+        });
+
+        describe('la base rechaza los duplicados', () => {
+            it('cada tabla del flujo web tiene su restricción única', async () => {
+                const cuenta = (await api('POST', '/api/auth/users', { token: tokens.admin, body: { nombre: 'Cuenta Unica', username: `d-uq-${tag}`, password: PASS, rol: 'alumno' } })).data.id;
+                const actividad = (await db.query("INSERT INTO actividades_extra (nombre, tipo, horario, cupo_max) VALUES ($1, 'Cultura', 'x', 10) RETURNING id", [`D-${tag}-Uq`])).rows[0].id;
+                const materia = (await db.query('INSERT INTO materias (nombre, curso_id) VALUES ($1, $2) RETURNING id', [`Unica ${tag}`, F.curso])).rows[0].id;
+                try {
+                    const casos = [
+                        ['inscripciones_extra', 'INSERT INTO inscripciones_extra (alumno_id, actividad_id) VALUES ($1, $2)', [cuenta, actividad]],
+                        ['transporte_asignaciones', 'INSERT INTO transporte_asignaciones (alumno_id, ruta_id) VALUES ($1, $2)', [F.dup, F.ruta]],
+                        ['comedor_asistencias', 'INSERT INTO comedor_asistencias (alumno_id, fecha) VALUES ($1, $2)', [F.dup, '2031-03-03']],
+                        ['calificaciones', 'INSERT INTO calificaciones (alumno_id, materia_id, nota, trimestre) VALUES ($1, $2, 7, 1)', [F.dup, materia]],
+                        ['cursos', 'INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, 5)', [apoyo.nivel, `DU-${tag}`]],
+                        ['materias', 'INSERT INTO materias (nombre, curso_id) VALUES ($1, $2)', [`Mat ${tag}`, F.curso]],
+                    ];
+                    for (const [tabla, sql, params] of casos) {
+                        const primero = await db.query(`${sql} RETURNING id`, params);
+                        if (tabla === 'cursos') cursosCreados.push(primero.rows[0].id);
+                        // el duplicado cambia mayúsculas en cursos y materias: la restricción compara sin distinguirlas
+                        const repetido = (tabla === 'cursos' || tabla === 'materias') ? params.map(p => (typeof p === 'string' ? p.toUpperCase() : p)) : params;
+                        assert.equal(await codigoDeError(db.query(sql, repetido)), '23505', `${tabla} debería rechazar el duplicado`);
+                    }
+                    const rutaNombre = (await db.query('SELECT nombre_ruta FROM transporte_rutas WHERE id = $1', [F.ruta])).rows[0].nombre_ruta;
+                    assert.equal(await codigoDeError(db.query('INSERT INTO transporte_rutas (nombre_ruta, capacidad_max) VALUES ($1, 5)', [rutaNombre.toUpperCase()])), '23505', 'transporte_rutas');
+                } finally {
+                    await db.query('DELETE FROM inscripciones_extra WHERE alumno_id = $1', [cuenta]);
+                    await db.query('DELETE FROM calificaciones WHERE alumno_id = $1', [F.dup]);
+                    await db.query('DELETE FROM transporte_asignaciones WHERE alumno_id = $1', [F.dup]);
+                    await db.query('DELETE FROM comedor_asistencias WHERE alumno_id = $1', [F.dup]);
+                    await db.query('DELETE FROM actividades_extra WHERE id = $1', [actividad]);
+                    await db.query('DELETE FROM materias WHERE id = $1', [materia]);
+                    await api('DELETE', `/api/auth/users/${cuenta}`, { token: tokens.admin });
+                }
+            });
+
+            it('dos pedidos simultáneos de inscripción a una actividad: solo uno entra', async () => {
+                const cuenta = await api('POST', '/api/auth/users', { token: tokens.admin, body: { nombre: 'Cuenta Carrera', username: `d-car-${tag}`, password: PASS, rol: 'alumno' } });
+                await login(`d-car-${tag}`, PASS);
+                const token = tokens[`d-car-${tag}`];
+                const actividad = (await db.query("INSERT INTO actividades_extra (nombre, tipo, horario, cupo_max) VALUES ($1, 'Cultura', 'x', 10) RETURNING id", [`D-${tag}-Car`])).rows[0].id;
+                try {
+                    const pedir = () => api('POST', '/api/academico/inscribir-actividad', { token, body: { actividad_id: actividad } });
+                    const [a, b] = await Promise.all([pedir(), pedir()]);
+                    assert.deepEqual([a.status, b.status].sort(), [201, 400], JSON.stringify([a.data, b.data]));
+                    const n = (await db.query('SELECT COUNT(*)::int AS n FROM inscripciones_extra WHERE actividad_id = $1', [actividad])).rows[0].n;
+                    assert.equal(n, 1);
+                } finally {
+                    await db.query('DELETE FROM inscripciones_extra WHERE actividad_id = $1', [actividad]);
+                    await db.query('DELETE FROM actividades_extra WHERE id = $1', [actividad]);
+                    await api('DELETE', `/api/auth/users/${cuenta.data.id}`, { token: tokens.admin });
+                }
+            });
+        });
+
+        describe('transporte', () => {
+            it('solo el administrador asigna, ve y quita asignaciones', async () => {
+                for (const t of [tokens.docente, tokens.padre, tokens.alumno]) {
+                    assert.equal((await asignar(F.aTransp, F.ruta, '', t)).status, 403);
+                    assert.equal((await api('GET', '/api/servicios/transporte/asignaciones', { token: t })).status, 403);
+                    assert.equal((await api('DELETE', '/api/servicios/transporte/asignaciones/1', { token: t })).status, 403);
+                }
+            });
+
+            it('rechaza los datos inválidos', async () => {
+                assert.equal((await asignar(undefined, F.ruta)).status, 400);
+                assert.equal((await asignar(F.aTransp, undefined)).status, 400);
+                assert.equal((await asignar('abc', F.ruta)).status, 400);
+                assert.equal((await asignar(F.aTransp, F.ruta, 'x'.repeat(121))).status, 400, 'punto de encuentro demasiado largo');
+                assert.equal((await asignar(987654321, F.ruta)).status, 404, 'alumno inexistente');
+                assert.equal((await asignar(F.aTransp, 987654321)).status, 404, 'ruta inexistente');
+                const inactivo = await asignar(F.inactivo, F.ruta);
+                assert.equal(inactivo.status, 409);
+                assert.match(inactivo.data.message, /activo/);
+            });
+
+            it('asigna con su punto de encuentro y no admite la misma asignación ni otra ruta', async () => {
+                await db.query('UPDATE transporte_rutas SET capacidad_max = $1 WHERE id = $2', [F.ocupadosInicial + 50, F.ruta]);
+                const ok = await asignar(F.aTransp, F.ruta, '  Plaza Central  ');
+                assert.equal(ok.status, 201, JSON.stringify(ok.data));
+                const guardada = (await db.query('SELECT punto_encuentro FROM transporte_asignaciones WHERE id = $1', [ok.data.id])).rows[0];
+                assert.equal(guardada.punto_encuentro, 'Plaza Central');
+
+                const igual = await asignar(F.aTransp, F.ruta, '');
+                assert.equal(igual.status, 409);
+                assert.match(igual.data.message, /ya está asignado a esta ruta/);
+                const otra = await asignar(F.aTransp, F.rutaOtra, '');
+                assert.equal(otra.status, 409);
+                assert.match(otra.data.message, /Quitale esa asignación/);
+                const n = (await db.query('SELECT COUNT(*)::int AS n FROM transporte_asignaciones WHERE alumno_id = $1', [F.aTransp])).rows[0].n;
+                assert.equal(n, 1);
+            });
+
+            it('lista las asignaciones con legajo y recorrido, y se pueden filtrar por ruta', async () => {
+                const todas = await api('GET', '/api/servicios/transporte/asignaciones', { token: tokens.admin });
+                assert.equal(todas.status, 200);
+                const fila = todas.data.find(a => a.alumno_id === F.aTransp);
+                assert.equal(fila.legajo, leg('A', F.aTransp));
+                assert.equal(fila.apellido, 'Aranda');
+                assert.equal(fila.punto_encuentro, 'Plaza Central');
+                const deLaRuta = await api('GET', `/api/servicios/transporte/asignaciones?ruta_id=${F.ruta}`, { token: tokens.admin });
+                assert.ok(deLaRuta.data.every(a => a.ruta_id === F.ruta) && deLaRuta.data.some(a => a.alumno_id === F.aTransp));
+                const deOtra = await api('GET', `/api/servicios/transporte/asignaciones?ruta_id=${F.rutaOtra}`, { token: tokens.admin });
+                assert.ok(!deOtra.data.some(a => a.alumno_id === F.aTransp));
+                assert.equal((await api('GET', '/api/servicios/transporte/asignaciones?ruta_id=abc', { token: tokens.admin })).status, 400);
+            });
+
+            it('respeta la capacidad, contando también a los inscriptos del mes, y quien ya viaja no ocupa lugar nuevo', async () => {
+                const ocupados = (await rutaDesdeApi(F.ruta)).ocupados;
+                await db.query('UPDATE transporte_rutas SET capacidad_max = $1 WHERE id = $2', [ocupados + 1, F.ruta]);
+
+                const bAsignado = await asignar(F.bTransp, F.ruta, '');
+                assert.equal(bAsignado.status, 201, 'queda justo un lugar');
+                const completa = await asignar(F.cTransp, F.ruta, '');
+                assert.equal(completa.status, 409);
+                assert.match(completa.data.message, /completa/);
+                assert.equal((await db.query('SELECT 1 FROM transporte_asignaciones WHERE alumno_id = $1', [F.cTransp])).rowCount, 0);
+
+                // un alumno inscripto este mes en el servicio del recorrido ya cuenta como ocupante: asignarlo no pide un lugar más
+                await db.query('INSERT INTO inscripciones_servicio (alumno_id, servicio_id, mes, anio) VALUES ($1, $2, $3, $4)', [F.viajero, F.servicioRuta, MES, ANIO]);
+                const conInscripcion = await asignar(F.viajero, F.ruta, '');
+                assert.equal(conInscripcion.status, 201, JSON.stringify(conInscripcion.data));
+
+                const ruta = await rutaDesdeApi(F.ruta);
+                assert.equal(ruta.ocupados, ocupados + 2, 'asignados e inscriptos del mes, sin repetir');
+                assert.equal(ruta.capacidad, ocupados + 1);
+            });
+
+            it('si dos asignaciones piden el último lugar a la vez, solo una lo consigue', async () => {
+                const ocupados = (await rutaDesdeApi(F.ruta)).ocupados;
+                await db.query('UPDATE transporte_rutas SET capacidad_max = $1 WHERE id = $2', [ocupados + 1, F.ruta]);
+                const x = await alumno('Ibarra');
+                const y = await alumno('Juarez');
+                const [a, b] = await Promise.all([asignar(x, F.ruta, ''), asignar(y, F.ruta, '')]);
+                assert.deepEqual([a.status, b.status].sort(), [201, 409], JSON.stringify([a.data, b.data]));
+                const n = (await db.query('SELECT COUNT(*)::int AS n FROM transporte_asignaciones WHERE alumno_id = ANY($1)', [[x, y]])).rows[0].n;
+                assert.equal(n, 1, 'no se supera la capacidad');
+            });
+
+            it('quitar una asignación libera el lugar y permite asignar otro recorrido', async () => {
+                await db.query('UPDATE transporte_rutas SET capacidad_max = $1 WHERE id = $2', [F.ocupadosInicial + 50, F.ruta]);
+                const asignacion = (await api('GET', '/api/servicios/transporte/asignaciones', { token: tokens.admin })).data.find(a => a.alumno_id === F.aTransp);
+                assert.equal((await api('DELETE', `/api/servicios/transporte/asignaciones/${asignacion.id}`, { token: tokens.admin })).status, 200);
+                assert.equal((await api('DELETE', `/api/servicios/transporte/asignaciones/${asignacion.id}`, { token: tokens.admin })).status, 404);
+                assert.equal((await api('DELETE', '/api/servicios/transporte/asignaciones/abc', { token: tokens.admin })).status, 400);
+                const otra = await asignar(F.aTransp, F.rutaOtra, 'Esquina');
+                assert.equal(otra.status, 201, JSON.stringify(otra.data));
+            });
+
+            it('no elimina un recorrido con alumnos asignados o con servicio en el catálogo', async () => {
+                const conAsignados = await api('DELETE', `/api/servicios/transporte/rutas/${F.rutaOtra}`, { token: tokens.admin });
+                assert.equal(conAsignados.status, 409);
+                assert.match(conAsignados.data.message, /asignad/);
+                const tambienAsignados = await api('DELETE', `/api/servicios/transporte/rutas/${F.ruta}`, { token: tokens.admin });
+                assert.equal(tambienAsignados.status, 409);
+                assert.equal((await api('DELETE', '/api/servicios/transporte/rutas/987654321', { token: tokens.admin })).status, 404);
+                assert.equal((await api('DELETE', '/api/servicios/transporte/rutas/abc', { token: tokens.admin })).status, 400);
+                for (const id of [F.ruta, F.rutaOtra]) {
+                    assert.equal((await db.query('SELECT 1 FROM transporte_rutas WHERE id = $1', [id])).rowCount, 1, 'las rutas siguen existiendo');
+                }
+            });
+
+            it('elimina un recorrido sin alumnos ni servicios', async () => {
+                const temporal = (await db.query("INSERT INTO transporte_rutas (nombre_ruta, chofer_nombre, capacidad_max) VALUES ($1, 'Prueba', 5) RETURNING id", [`D-Temp-${tag}`])).rows[0].id;
+                try {
+                    const r = await api('DELETE', `/api/servicios/transporte/rutas/${temporal}`, { token: tokens.admin });
+                    assert.equal(r.status, 200, JSON.stringify(r.data));
+                    assert.equal((await db.query('SELECT 1 FROM transporte_rutas WHERE id = $1', [temporal])).rowCount, 0);
+                } finally {
+                    await db.query('DELETE FROM transporte_rutas WHERE id = $1', [temporal]);
+                }
+            });
+
+            it('tampoco elimina un recorrido que tiene su servicio de transporte, aunque no tenga alumnos asignados', async () => {
+                const temporal = (await db.query("INSERT INTO transporte_rutas (nombre_ruta, chofer_nombre, capacidad_max) VALUES ($1, 'Prueba', 5) RETURNING id", [`D-Serv-${tag}`])).rows[0].id;
+                const servicio = (await db.query("INSERT INTO servicios (tipo, nombre, precio_mensual, ruta_id) VALUES ('Transporte', $1, 1000, $2) RETURNING id", [`D-Serv-${tag}`, temporal])).rows[0].id;
+                try {
+                    const r = await api('DELETE', `/api/servicios/transporte/rutas/${temporal}`, { token: tokens.admin });
+                    assert.equal(r.status, 409);
+                    assert.match(r.data.message, /catálogo/);
+                } finally {
+                    await db.query('DELETE FROM servicios WHERE id = $1', [servicio]);
+                    await db.query('DELETE FROM transporte_rutas WHERE id = $1', [temporal]);
+                }
+            });
+        });
+
+        describe('comedor', () => {
+            const registros = (alumnoId) => db.query('SELECT consumio_menu, observaciones FROM comedor_asistencias WHERE alumno_id = $1 AND fecha = CURRENT_DATE', [alumnoId]);
+
+            it('registra un día por alumno: volver a registrarlo corrige el registro en lugar de duplicarlo', async () => {
+                const primero = await comedor({ alumno_id: F.comedor, consumio_menu: 1, observaciones: ' Sin sal ' });
+                assert.equal(primero.status, 201, JSON.stringify(primero.data));
+                const segundo = await comedor({ alumno_id: F.comedor, consumio_menu: 0, observaciones: 'No quiso' });
+                assert.equal(segundo.status, 200);
+                assert.equal(segundo.data.id, primero.data.id);
+                assert.equal(segundo.data.actualizado, true);
+                const filas = (await registros(F.comedor)).rows;
+                assert.deepEqual(filas, [{ consumio_menu: false, observaciones: 'No quiso' }]);
+            });
+
+            it('sin datos de consumo se toma como que sí consumió, y el administrador también puede registrar', async () => {
+                const otro = await alumno('Hidalgo');
+                const r = await comedor({ alumno_id: otro }, tokens.admin);
+                assert.equal(r.status, 201);
+                assert.deepEqual((await registros(otro)).rows, [{ consumio_menu: true, observaciones: null }]);
+            });
+
+            it('valida el alumno, el consumo y las observaciones', async () => {
+                assert.equal((await comedor({})).status, 400);
+                assert.equal((await comedor({ alumno_id: 'abc' })).status, 400);
+                assert.equal((await comedor({ alumno_id: 987654321 })).status, 404);
+                assert.equal((await comedor({ alumno_id: F.comedor, consumio_menu: 'quizás' })).status, 400);
+                assert.equal((await comedor({ alumno_id: F.comedor, observaciones: 'x'.repeat(301) })).status, 400);
+                assert.equal((await comedor({ alumno_id: F.comedor }, null)).status, 403, 'sin sesión');
+                assert.equal((await comedor({ alumno_id: F.comedor }, tokens.padre)).status, 403);
+            });
+        });
+
+        describe('migración: duplicados anteriores', () => {
+            it('elimina los duplicados exactos conservando el que corresponde, y no corta el arranque si no puede', async () => {
+                const schema = fs.readFileSync(path.join(__dirname, '../src/config/schema.sql'), 'utf8');
+                const cuenta = (await api('POST', '/api/auth/users', { token: tokens.admin, body: { nombre: 'Cuenta Migra', username: `d-mig-${tag}`, password: PASS, rol: 'alumno' } })).data.id;
+                const actividad = (await db.query("INSERT INTO actividades_extra (nombre, tipo, horario, cupo_max) VALUES ($1, 'Cultura', 'x', 10) RETURNING id", [`D-${tag}-Mig`])).rows[0].id;
+                const materia = (await db.query('INSERT INTO materias (nombre, curso_id) VALUES ($1, $2) RETURNING id', [`Migra ${tag}`, F.curso])).rows[0].id;
+                const alumnoMig = await alumno('Migrado');
+                const client = await db.getClient();
+                try {
+                    // Todo dentro de una transacción que se deshace: la base de pruebas queda como estaba.
+                    await client.query('BEGIN');
+                    for (const indice of ['inscripciones_extra_alumno_actividad_uq', 'transporte_asignaciones_alumno_uq', 'comedor_asistencias_alumno_fecha_uq',
+                        'calificaciones_alumno_materia_trimestre_uq', 'cursos_nivel_division_uq']) {
+                        await client.query(`DROP INDEX ${indice}`);
+                    }
+                    const insertar = async (sql, params) => (await client.query(`${sql} RETURNING id`, params)).rows[0].id;
+                    const ie1 = await insertar('INSERT INTO inscripciones_extra (alumno_id, actividad_id) VALUES ($1, $2)', [cuenta, actividad]);
+                    const ie2 = await insertar('INSERT INTO inscripciones_extra (alumno_id, actividad_id) VALUES ($1, $2)', [cuenta, actividad]);
+                    const ta1 = await insertar('INSERT INTO transporte_asignaciones (alumno_id, ruta_id) VALUES ($1, $2)', [alumnoMig, F.ruta]);
+                    const ta2 = await insertar('INSERT INTO transporte_asignaciones (alumno_id, ruta_id) VALUES ($1, $2)', [alumnoMig, F.rutaOtra]);
+                    const ca1 = await insertar('INSERT INTO comedor_asistencias (alumno_id, fecha, consumio_menu) VALUES ($1, $2, true)', [alumnoMig, '2031-04-04']);
+                    const ca2 = await insertar('INSERT INTO comedor_asistencias (alumno_id, fecha, consumio_menu) VALUES ($1, $2, false)', [alumnoMig, '2031-04-04']);
+                    const no1 = await insertar('INSERT INTO calificaciones (alumno_id, materia_id, nota, trimestre) VALUES ($1, $2, 4, 1)', [alumnoMig, materia]);
+                    const no2 = await insertar('INSERT INTO calificaciones (alumno_id, materia_id, nota, trimestre) VALUES ($1, $2, 9, 1)', [alumnoMig, materia]);
+                    const cu1 = await insertar('INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, 5)', [apoyo.nivel, `MIG-${tag}`]);
+                    const cu2 = await insertar('INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, 5)', [apoyo.nivel, `mig-${tag}`]);
+
+                    await client.query(schema);
+
+                    const quedan = async (tabla, ids) => (await client.query(`SELECT id FROM ${tabla} WHERE id = ANY($1) ORDER BY id`, [ids])).rows.map(r => r.id);
+                    assert.deepEqual(await quedan('inscripciones_extra', [ie1, ie2]), [ie1], 'en las actividades se conserva la inscripción original');
+                    assert.deepEqual(await quedan('transporte_asignaciones', [ta1, ta2]), [ta2], 'en el transporte, la asignación más reciente');
+                    assert.deepEqual(await quedan('comedor_asistencias', [ca1, ca2]), [ca2], 'en el comedor, el registro más reciente');
+                    assert.deepEqual(await quedan('calificaciones', [no1, no2]), [no2], 'en las notas, la última cargada');
+                    // Los cursos repetidos no se tocan (hay alumnos y materias que dependen de ellos): el índice no se crea y el script sigue.
+                    assert.deepEqual(await quedan('cursos', [cu1, cu2]), [cu1, cu2]);
+                    const indices = (await client.query("SELECT indexname FROM pg_indexes WHERE indexname = ANY($1)", [[
+                        'inscripciones_extra_alumno_actividad_uq', 'transporte_asignaciones_alumno_uq', 'comedor_asistencias_alumno_fecha_uq', 'calificaciones_alumno_materia_trimestre_uq', 'cursos_nivel_division_uq',
+                    ]])).rows.map(r => r.indexname).sort();
+                    assert.deepEqual(indices, [
+                        'calificaciones_alumno_materia_trimestre_uq', 'comedor_asistencias_alumno_fecha_uq', 'inscripciones_extra_alumno_actividad_uq', 'transporte_asignaciones_alumno_uq',
+                    ], 'se recrean los índices posibles y el de cursos queda sin crear');
+                } finally {
+                    await client.query('ROLLBACK').catch(() => {});
+                    client.release();
+                    await db.query('DELETE FROM actividades_extra WHERE id = $1', [actividad]).catch(() => {});
+                    await db.query('DELETE FROM materias WHERE id = $1', [materia]).catch(() => {});
+                    await api('DELETE', `/api/auth/users/${cuenta}`, { token: tokens.admin });
+                }
+                const sigue = await db.query("SELECT indexname FROM pg_indexes WHERE indexname = 'cursos_nivel_division_uq'");
+                assert.equal(sigue.rowCount, 1, 'el rollback deja la base como estaba');
+            });
+        });
+    });
 });

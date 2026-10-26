@@ -3,6 +3,7 @@ const db = require('../config/database');
 const { NOMBRE_REGEX, esNombreValido, esEmailValido } = require('../utils/validators');
 const { docenteDeCuenta } = require('../services/vinculos.service');
 const { leerPeriodo, periodoDeFecha } = require('../utils/inscripciones');
+const { legajoAlumnoSql } = require('../utils/reportes');
 const { actividadPorId, inscriptosDeDeporte, estaInscriptoEnDeporte } = require('../services/actividades.service');
 
 const ESTADOS_ALUMNO = ['Activo', 'Inactivo', 'Egresado'];
@@ -110,10 +111,17 @@ exports.createCurso = async (req, res) => {
     if (!Number.isInteger(cupoNum) || cupoNum <= 0) {
         return res.status(400).json({ message: "El cupo debe ser un número entero mayor a 0" });
     }
+    const divisionLimpia = String(division).trim();
+    if (!divisionLimpia) return res.status(400).json({ message: "Campos obligatorios" });
     try {
-        const result = await db.query('INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, $3) RETURNING id', [nivel_id, division, cupoNum]);
+        const nivel = await db.query('SELECT id FROM niveles WHERE id = $1', [nivel_id]);
+        if (!nivel.rows[0]) return res.status(404).json({ message: "El nivel no existe" });
+        const repetido = await db.query('SELECT 1 FROM cursos WHERE nivel_id = $1 AND LOWER(division) = LOWER($2)', [nivel_id, divisionLimpia]);
+        if (repetido.rowCount > 0) return res.status(409).json({ message: "Ya existe un curso con esa división en este nivel" });
+        const result = await db.query('INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, $3) RETURNING id', [nivel_id, divisionLimpia, cupoNum]);
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ message: "Ya existe un curso con esa división en este nivel" });
         res.status(500).json({ message: err.message });
     }
 };
@@ -135,7 +143,7 @@ exports.getAlumnos = async (req, res) => {
             }
         }
         const result = await db.query(`
-            SELECT alumnos.*, cursos.division, niveles.nombre as nivel_nombre
+            SELECT alumnos.*, ${legajoAlumnoSql('alumnos.id')} AS legajo, cursos.division, niveles.nombre as nivel_nombre
             FROM alumnos
             LEFT JOIN cursos ON alumnos.curso_id = cursos.id
             LEFT JOIN niveles ON cursos.nivel_id = niveles.id
@@ -271,9 +279,14 @@ exports.createMateria = async (req, res) => {
     }
     if (!NOMBRE_REGEX.test(nombre)) return res.status(400).json({ message: "El nombre de la materia solo puede contener letras (sin números ni símbolos)" });
     try {
+        const curso = await db.query('SELECT id FROM cursos WHERE id = $1', [curso_id]);
+        if (!curso.rows[0]) return res.status(404).json({ message: "El curso no existe" });
+        const repetida = await db.query('SELECT 1 FROM materias WHERE curso_id = $1 AND LOWER(nombre) = LOWER($2)', [curso_id, nombre]);
+        if (repetida.rowCount > 0) return res.status(409).json({ message: "Esa materia ya existe en este curso" });
         const result = await db.query('INSERT INTO materias (nombre, curso_id) VALUES ($1, $2) RETURNING id', [nombre, curso_id]);
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ message: "Esa materia ya existe en este curso" });
         res.status(500).json({ message: err.message });
     }
 };
@@ -427,6 +440,7 @@ exports.inscribirActividad = async (req, res) => {
         );
         res.status(201).json({ message: "Inscripción realizada con éxito", id: insertResult.rows[0].id });
     } catch (err) {
+        if (err.code === '23505') return res.status(400).json({ message: "Ya estás inscripto en esta actividad" });
         res.status(500).json({ message: err.message });
     }
 };
@@ -467,7 +481,7 @@ exports.desinscribirActividad = async (req, res) => {
 // --- MIS HIJOS (para rol padre) ---
 exports.getMisHijos = async (req, res) => {
     const query = `
-        SELECT alumnos.*, cursos.division, niveles.nombre as nivel_nombre
+        SELECT alumnos.*, ${legajoAlumnoSql('alumnos.id')} AS legajo, cursos.division, niveles.nombre as nivel_nombre
         FROM alumnos
         LEFT JOIN cursos ON alumnos.curso_id = cursos.id
         LEFT JOIN niveles ON cursos.nivel_id = niveles.id
@@ -537,7 +551,7 @@ exports.getResumenHijo = async (req, res) => {
 // para que el padre pueda elegir cuál vincular a su cuenta.
 exports.getAlumnosDisponibles = async (req, res) => {
     const query = `
-        SELECT id, nombre, apellido, dni
+        SELECT id, ${legajoAlumnoSql('id')} AS legajo, nombre, apellido, dni
         FROM alumnos
         WHERE tutor_id IS NULL
         ORDER BY apellido, nombre

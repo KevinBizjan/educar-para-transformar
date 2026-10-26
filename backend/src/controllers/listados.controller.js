@@ -6,7 +6,7 @@
 const db = require('../config/database');
 const { validarMesAnio, ReglaError } = require('../utils/inscripciones');
 const { describirHorario } = require('../utils/deportes');
-const { seccion, reporte, aCsv, nombreArchivo, CATALOGO } = require('../utils/reportes');
+const { legajoAlumnoSql, seccion, reporte, aCsv, nombreArchivo, CATALOGO } = require('../utils/reportes');
 const { fichaAlumno, fichaDocente } = require('../services/fichas.service');
 
 const entero = (v) => {
@@ -60,7 +60,7 @@ const manejar = (id, generar) => async (req, res) => {
     }
 };
 
-const LEGAJO_ALUMNO = "'A-' || LPAD(a.id::text, 5, '0')";
+const LEGAJO_ALUMNO = legajoAlumnoSql('a.id');
 const ALUMNO_NOMBRE = "a.apellido || ', ' || a.nombre";
 
 // ---------------------------------------------------------------------------------------------

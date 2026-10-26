@@ -2,13 +2,14 @@ const db = require('../config/database');
 const PagosFacade = require('../patterns/pagosFacade');
 
 const { NOMBRE_REGEX, esNombreValido, esDniValido, esEmailValido } = require('../utils/validators');
+const { legajoPersonalSql } = require('../utils/reportes');
 
 const ESTADOS_PERSONAL = ['Activo', 'Inactivo', 'Licencia'];
 
 // --- PERSONAL ---
 exports.getPersonal = async (req, res) => {
     try {
-        const result = await db.query('SELECT * FROM personal');
+        const result = await db.query(`SELECT *, ${legajoPersonalSql('tipo', 'id')} AS legajo FROM personal`);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ message: err.message });

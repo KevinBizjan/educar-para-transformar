@@ -37,6 +37,7 @@ const AdminDashboard = () => {
     const [niveles, setNiveles] = useState([]);
 
     const [rutasTransporte, setRutasTransporte] = useState([]);
+    const [asignacionesTransporte, setAsignacionesTransporte] = useState([]);
     const [cuotasConfig, setCuotasConfig] = useState([]);
     const [reportesStats, setReportesStats] = useState(null);
     const [materias, setMaterias] = useState([]);
@@ -284,8 +285,8 @@ const AdminDashboard = () => {
         if (!data || data.length === 0) return alert('No hay alumnos para exportar.');
         exportCSV(
             `legajos_alumnos_${new Date().toISOString().slice(0,10)}.csv`,
-            ['ID', 'Apellido', 'Nombre', 'DNI', 'Fecha Nac.', 'Nivel', 'División'],
-            data.map(a => [a.id, a.apellido, a.nombre, a.dni, a.fecha_nacimiento, a.nivel_nombre || '', a.division || ''])
+            ['Legajo', 'Apellido', 'Nombre', 'DNI', 'Fecha Nac.', 'Nivel', 'División'],
+            data.map(a => [a.legajo, a.apellido, a.nombre, a.dni, a.fecha_nacimiento, a.nivel_nombre || '', a.division || ''])
         );
     };
 
@@ -298,8 +299,8 @@ const AdminDashboard = () => {
         if (!data || data.length === 0) return alert('No hay personal para exportar.');
         exportCSV(
             `nomina_personal_${new Date().toISOString().slice(0,10)}.csv`,
-            ['ID', 'Apellido', 'Nombre', 'DNI', 'Tipo', 'Email', 'Fecha Alta'],
-            data.map(p => [p.id, p.apellido, p.nombre, p.dni, p.tipo, p.email, p.fecha_alta])
+            ['Legajo', 'Apellido', 'Nombre', 'DNI', 'Tipo', 'Email', 'Fecha Alta'],
+            data.map(p => [p.legajo, p.apellido, p.nombre, p.dni, p.tipo, p.email, p.fecha_alta])
         );
     };
 
@@ -370,8 +371,12 @@ const AdminDashboard = () => {
 
     const fetchServicios = async () => {
         try {
-            const resTrans = await apiFetch(`${API_URL}/api/servicios/transporte/rutas`);
+            const [resTrans, resAsig] = await Promise.all([
+                apiFetch(`${API_URL}/api/servicios/transporte/rutas`),
+                apiFetch(`${API_URL}/api/servicios/transporte/asignaciones`)
+            ]);
             if (resTrans.ok) setRutasTransporte(await resTrans.json());
+            if (resAsig.ok) setAsignacionesTransporte(await resAsig.json());
         } catch (error) { console.error(error); }
     };
 
@@ -667,13 +672,15 @@ const AdminDashboard = () => {
     const filteredAlumnos = alumnos.filter(a => 
         a.nombre.toLowerCase().includes(searchTermAlumno.toLowerCase()) || 
         a.apellido.toLowerCase().includes(searchTermAlumno.toLowerCase()) ||
-        a.dni.includes(searchTermAlumno)
+        a.dni.includes(searchTermAlumno) ||
+        (a.legajo || '').toLowerCase().includes(searchTermAlumno.trim().toLowerCase())
     );
 
     const filteredPersonal = personal.filter(p => 
         p.nombre.toLowerCase().includes(searchTermPersonal.toLowerCase()) || 
         p.apellido.toLowerCase().includes(searchTermPersonal.toLowerCase()) ||
-        p.dni.includes(searchTermPersonal)
+        p.dni.includes(searchTermPersonal) ||
+        (p.legajo || '').toLowerCase().includes(searchTermPersonal.trim().toLowerCase())
     );
 
     const handleCuotaSubmit = async (e) => {
@@ -775,7 +782,8 @@ const AdminDashboard = () => {
                 },
                 body: JSON.stringify(rutaData)
             });
-            if (response.ok) fetchServicios();
+            if (response.ok) { form.reset(); fetchServicios(); }
+            else { const errorData = await response.json().catch(() => ({})); alert(errorData.message || 'No se pudo crear la ruta.'); }
         } catch (error) { console.error(error); }
     };
 
@@ -793,7 +801,7 @@ const AdminDashboard = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(datos)
         });
-        if (response.ok) { form.reset(); alert('Alumno asignado a la ruta correctamente.'); }
+        if (response.ok) { form.reset(); fetchServicios(); alert('Alumno asignado a la ruta correctamente.'); }
         else { const errorData = await response.json().catch(() => ({})); alert(errorData.message || 'Error al asignar el alumno a la ruta'); }
     };
 
@@ -804,6 +812,17 @@ const AdminDashboard = () => {
                     method: 'DELETE'
                 });
                 if (response.ok) fetchServicios();
+                else { const errorData = await response.json().catch(() => ({})); alert(errorData.message || 'No se pudo eliminar la ruta.'); }
+            } catch (error) { console.error(error); }
+        });
+    };
+
+    const quitarAsignacion = (asignacion) => {
+        pedirConfirmacion(`¿Quitar a ${asignacion.apellido}, ${asignacion.nombre} de la ruta ${asignacion.ruta}?`, async () => {
+            try {
+                const response = await apiFetch(`${API_URL}/api/servicios/transporte/asignaciones/${asignacion.id}`, { method: 'DELETE' });
+                if (response.ok) fetchServicios();
+                else { const errorData = await response.json().catch(() => ({})); alert(errorData.message || 'No se pudo quitar la asignación.'); }
             } catch (error) { console.error(error); }
         });
     };
@@ -963,7 +982,7 @@ const AdminDashboard = () => {
                         <div style={{ display: 'flex', gap: '12px', flex: 1, maxWidth: '400px', marginLeft: '24px' }}>
                             <input 
                                 type="text" 
-                                placeholder="🔍 Buscar por nombre o DNI..." 
+                                placeholder="🔍 Buscar por nombre, DNI o legajo..." 
                                 style={{ ...inputStyle, padding: '8px 16px' }}
                                 value={searchTermAlumno}
                                 onChange={(e) => setSearchTermAlumno(e.target.value)}
@@ -1025,7 +1044,7 @@ const AdminDashboard = () => {
                                     ) : (
                                         filteredAlumnos.map((a) => (
                                             <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={tdStyle}>#{a.id}</td>
+                                                <td style={tdStyle}>{a.legajo}</td>
                                                 <td style={tdStyle}><strong>{a.apellido}, {a.nombre}</strong></td>
                                                 <td style={tdStyle}>{a.dni}</td>
                                                 <td style={tdStyle}>{a.nivel_nombre || 'Sin asignar'} {a.division || ''}</td>
@@ -1202,7 +1221,7 @@ const AdminDashboard = () => {
                         <div style={{ display: 'flex', gap: '12px', flex: 1, maxWidth: '400px', marginLeft: '24px' }}>
                             <input 
                                 type="text" 
-                                placeholder="🔍 Buscar personal..." 
+                                placeholder="🔍 Buscar por nombre, DNI o legajo..." 
                                 style={{ ...inputStyle, padding: '8px 16px' }}
                                 value={searchTermPersonal}
                                 onChange={(e) => setSearchTermPersonal(e.target.value)}
@@ -1258,7 +1277,7 @@ const AdminDashboard = () => {
                                     ) : (
                                         filteredPersonal.map((p) => (
                                             <tr key={p.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                <td style={tdStyle}>#{p.id}</td>
+                                                <td style={tdStyle}>{p.legajo}</td>
                                                 <td style={tdStyle}><strong>{p.apellido}, {p.nombre}</strong></td>
                                                 <td style={tdStyle}>{p.dni}</td>
                                                 <td style={tdStyle}><span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--blue)' }}>{p.tipo.toUpperCase()}</span></td>
@@ -1424,7 +1443,7 @@ const AdminDashboard = () => {
                                 <tr style={{ borderBottom: '2px solid #f1f5f9' }}>
                                     <th style={thStyle}>Ruta</th>
                                     <th style={thStyle}>Chofer</th>
-                                    <th style={thStyle}>Cap.</th>
+                                    <th style={thStyle}>Ocupados / Cap.</th>
                                     <th style={thStyle}>Acción</th>
                                 </tr>
                             </thead>
@@ -1436,7 +1455,9 @@ const AdminDashboard = () => {
                                         <tr key={r.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
                                             <td style={tdStyle}>{r.nombre}</td>
                                             <td style={tdStyle}>{r.chofer}</td>
-                                            <td style={tdStyle}>{r.capacidad}</td>
+                                            <td style={tdStyle}>
+                                                <span style={{ fontWeight: 800, color: r.ocupados >= r.capacidad ? '#dc2626' : 'var(--green)' }}>{r.ocupados}</span> / {r.capacidad}
+                                            </td>
                                             <td style={tdStyle}>
                                                 <button onClick={() => deleteRuta(r.id)} style={{ background: 'none', border: 'none', color: '#dc2626', fontWeight: 700, cursor: 'pointer' }}>Eliminar</button>
                                             </td>
@@ -1461,6 +1482,40 @@ const AdminDashboard = () => {
                                 <input type="text" name="punto_encuentro" placeholder="Punto de encuentro (opcional)" style={inputStyle} />
                                 <button type="submit" className="btn btn-green" style={{ whiteSpace: 'nowrap' }}>Asignar</button>
                             </form>
+                            <p style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '10px' }}>
+                                Un alumno tiene una sola ruta asignada: para cambiarla, quitá la asignación y asigná la nueva. Los lugares ocupados incluyen a los inscriptos del mes.
+                            </p>
+
+                            <div style={{ overflowX: 'auto', marginTop: '16px', border: '1px solid #f1f5f9', borderRadius: '10px' }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                                    <thead style={{ background: '#f8fafc' }}>
+                                        <tr>
+                                            <th style={thStyle}>Legajo</th>
+                                            <th style={thStyle}>Alumno</th>
+                                            <th style={thStyle}>Ruta</th>
+                                            <th style={thStyle}>Punto de encuentro</th>
+                                            <th style={thStyle}>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {asignacionesTransporte.length === 0 ? (
+                                            <tr><td colSpan="5" style={{ textAlign: 'center', padding: '14px', color: '#64748b' }}>No hay alumnos asignados a una ruta.</td></tr>
+                                        ) : (
+                                            asignacionesTransporte.map(a => (
+                                                <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                    <td style={tdStyle}>{a.legajo}</td>
+                                                    <td style={tdStyle}><strong>{a.apellido}</strong>, {a.nombre}</td>
+                                                    <td style={tdStyle}>{a.ruta}</td>
+                                                    <td style={tdStyle}>{a.punto_encuentro || '-'}</td>
+                                                    <td style={tdStyle}>
+                                                        <button onClick={() => quitarAsignacion(a)} style={{ background: 'none', border: 'none', color: '#dc2626', fontWeight: 700, cursor: 'pointer' }}>Quitar</button>
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 </div>

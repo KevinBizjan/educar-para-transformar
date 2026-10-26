@@ -4,6 +4,7 @@
 // solo lo suyo. El vínculo es opcional y uno a uno: una cuenta, una persona.
 const db = require('../config/database');
 const { leerUserId, validarRolDeCuenta } = require('../utils/vinculos');
+const { legajoAlumnoSql, legajoDocenteSql } = require('../utils/reportes');
 
 // Tablas permitidas (nunca se arma el nombre de la tabla con datos del pedido).
 const LEGAJOS = {
@@ -16,11 +17,11 @@ exports.listar = async (req, res) => {
     try {
         const [alumnos, docentes, cuentas] = await Promise.all([
             db.query(
-                `SELECT a.id, 'A-' || LPAD(a.id::text, 5, '0') AS legajo, a.apellido, a.nombre, a.estado, a.user_id, u.username
+                `SELECT a.id, ${legajoAlumnoSql('a.id')} AS legajo, a.apellido, a.nombre, a.estado, a.user_id, u.username
                  FROM alumnos a LEFT JOIN users u ON u.id = a.user_id ORDER BY a.apellido, a.nombre`
             ),
             db.query(
-                `SELECT p.id, 'D-' || LPAD(p.id::text, 5, '0') AS legajo, p.apellido, p.nombre, p.estado, p.user_id, u.username
+                `SELECT p.id, ${legajoDocenteSql('p.id')} AS legajo, p.apellido, p.nombre, p.estado, p.user_id, u.username
                  FROM personal p LEFT JOIN users u ON u.id = p.user_id WHERE p.tipo = 'Docente' ORDER BY p.apellido, p.nombre`
             ),
             db.query(

@@ -5,6 +5,15 @@ const { nombreDia } = require('./deportes');
 // Legajo = número de registro con prefijo: A-00012 (alumno), D-00005 (docente). Es estable y ordenable.
 const legajo = (prefijo, id) => `${prefijo}-${String(id).padStart(5, '0')}`;
 
+// El mismo legajo armado en SQL. LPAD recorta cuando el número es más largo que el ancho pedido, por eso el ancho
+// nunca es menor que la cantidad de cifras (el alumno 123456 es A-123456, igual que en `legajo`).
+// prefijoSql es una expresión SQL: "'A'" para alumnos, "'D'" para docentes.
+const legajoSql = (prefijoSql, columna) => `${prefijoSql} || '-' || LPAD(${columna}::text, GREATEST(5, LENGTH(${columna}::text)), '0')`;
+const legajoAlumnoSql = (columna) => legajoSql("'A'", columna);
+const legajoDocenteSql = (columna) => legajoSql("'D'", columna);
+// Personal: los docentes llevan D y el resto del personal (administrativos, directivos, maestranza), P.
+const legajoPersonalSql = (columnaTipo, columna) => legajoSql(`CASE WHEN ${columnaTipo} = 'Docente' THEN 'D' ELSE 'P' END`, columna);
+
 const diaCapitalizado = (dia) => {
     const nombre = nombreDia(dia);
     return nombre ? nombre.charAt(0).toUpperCase() + nombre.slice(1) : '';
@@ -59,4 +68,4 @@ const CATALOGO = [
     { id: 'alumnos-por-recorrido', titulo: 'Alumnos por recorrido de transporte', descripcion: 'Recorrido, chofer, alumno, curso y punto de encuentro.', filtros: [{ clave: 'ruta_id', tipo: 'ruta' }, { clave: 'periodo', tipo: 'periodo' }] },
 ];
 
-module.exports = { legajo, diaCapitalizado, seccion, reporte, celdaCsv, aCsv, nombreArchivo, CATALOGO };
+module.exports = { legajo, legajoSql, legajoAlumnoSql, legajoDocenteSql, legajoPersonalSql, diaCapitalizado, seccion, reporte, celdaCsv, aCsv, nombreArchivo, CATALOGO };

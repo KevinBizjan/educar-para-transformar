@@ -112,6 +112,15 @@ Una cuenta con rol **docente** o **alumno** se asocia a su legajo para que cada 
 * API: `GET /api/vinculos` y `PUT /api/vinculos/{alumnos|docentes}/:id` (administrador); `GET /api/academico/mis-cursos` (docente); `GET /api/academico/mis-hijos/:id/ficha`, `GET /api/academico/cursos-disponibles` y `POST /api/academico/mis-hijos/:id/inscribir-curso` (padre); `GET /api/academico/mi-ficha` (alumno), que usa además `/api/inscripciones/catalogo` y `/api/inscripciones` para sus deportes.
 * Los profesores por materia salen de los **Horarios** cargados en Gestión Académica, igual que en los reportes.
 
+## 🧱 Reglas de integridad
+
+Lo que garantiza la base de datos y no solo la pantalla (así dos pedidos simultáneos no pueden romperlo):
+
+* **Legajo:** `A-00012` para los alumnos, `D-00005` para los docentes y `P-00007` para el resto del personal. Es el mismo en las tablas del administrador, la búsqueda, las exportaciones, las fichas y los reportes.
+* **Transporte (asignación del administrador):** el alumno debe estar activo y tiene **una sola ruta asignada** (para cambiarla se quita y se asigna la nueva). Cada recorrido tiene capacidad: los lugares ocupados cuentan a los asignados y a los inscriptos del mes. No se elimina un recorrido con alumnos asignados ni con servicio en el catálogo, y el servicio tiene como máximo 4 recorridos.
+* **Sin duplicados:** una inscripción por alumno y actividad (Cultura e Idioma), un registro de comedor por alumno y día (registrarlo de nuevo lo corrige), una nota por alumno, materia y trimestre (y por alumno y deporte), y sin cursos, materias ni recorridos repetidos dentro de su nivel, curso o escuela.
+* **Al actualizar:** el esquema se aplica solo al arrancar. Si hubiera duplicados exactos de antes, se conserva el registro que corresponde (el más reciente, salvo en las inscripciones a actividades, donde se conserva el original). Los cursos, materias o recorridos que ya estén repetidos no se tocan: se avisa y el índice no se crea.
+
 ## 🔁 Integración continua y flujo de trabajo
 
 **Flujo:** issue → rama → Pull Request (con `Closes #n`) → GitHub Actions → merge a `main` → Render despliega a producción.
