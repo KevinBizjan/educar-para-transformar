@@ -11,7 +11,7 @@
 // superar un cupo ni el máximo de deportes.
 const db = require('../config/database');
 const {
-    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, rangoDelMes, puedeGestionarTipo, ReglaError,
+    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, leerPeriodo, validarPeriodoInscripcion, rangoDelMes, puedeGestionarTipo, ReglaError,
 } = require('../utils/inscripciones');
 
 const { validarHorarioGrupo, seSuperponen, describirHorario } = require('../utils/deportes');
@@ -350,6 +350,34 @@ exports.darDeBaja = async (req, res) => {
 };
 
 // --- Administración del catálogo (solo admin) ---
+// Todos los servicios, también los desactivados, con el detalle que necesita la pantalla de administración
+// (deporte, nivel, profesor, horario, recorrido) y la cantidad de inscriptos del mes.
+exports.listarServicios = async (req, res) => {
+    const { mes, anio, error } = leerPeriodo(req.query);
+    if (error) return res.status(400).json({ message: error });
+    try {
+        const r = await db.query(
+            `SELECT s.id, s.tipo, s.nombre, s.precio_mensual, s.cupo_max, s.activo,
+                    s.actividad_id, a.nombre AS deporte, s.nivel_id, n.nombre AS nivel,
+                    s.docente_id, (p.apellido || ', ' || p.nombre) AS docente,
+                    s.dia_semana, s.hora_inicio, s.hora_fin, s.ruta_id, r.nombre_ruta AS ruta,
+                    COUNT(i.id) FILTER (WHERE i.estado = 'Activa' AND i.mes = $1 AND i.anio = $2)::int AS inscriptos
+             FROM servicios s
+             LEFT JOIN actividades_extra a ON a.id = s.actividad_id
+             LEFT JOIN niveles n ON n.id = s.nivel_id
+             LEFT JOIN personal p ON p.id = s.docente_id
+             LEFT JOIN transporte_rutas r ON r.id = s.ruta_id
+             LEFT JOIN inscripciones_servicio i ON i.servicio_id = s.id
+             GROUP BY s.id, a.nombre, n.nombre, p.apellido, p.nombre, r.nombre_ruta
+             ORDER BY s.tipo, s.activo DESC, s.nombre`,
+            [mes, anio]
+        );
+        res.json({ mes, anio, servicios: r.rows });
+    } catch (err) {
+        res.status(500).json({ message: 'Error en el servidor' });
+    }
+};
+
 const numeroPositivo = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : null; };
 const enteroPositivoONulo = (v) => (v === null || v === undefined || v === '' ? null : (Number.isInteger(Number(v)) && Number(v) > 0 ? Number(v) : undefined));
 

@@ -2319,4 +2319,192 @@ describe('API Educar para Transformar', { skip }, () => {
             });
         });
     });
+
+    describe('Administración del catálogo de servicios (ARTE-2, Sprint D2)', () => {
+        const tag = String(Date.now());
+        const MES = 3;
+        const ANIO = 2044;
+        const F = {};
+        const alumnosCreados = [];
+        const serviciosCreados = [];
+        const admin = (metodo, ruta, body) => api(metodo, `/api/inscripciones${ruta}`, { token: tokens.admin, body });
+        const alumno = async (apellido) => {
+            const id = (await db.query(
+                `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, curso_id, estado)
+                 VALUES ('Catalogo', $1, $2, '2015-05-05', NULL, 'Activo') RETURNING id`, [apellido, dniUnico()])).rows[0].id;
+            alumnosCreados.push(id);
+            return id;
+        };
+        const crear = async (body) => {
+            const r = await admin('POST', '/servicios', { precio_mensual: 1500, ...body });
+            assert.equal(r.status, 201, JSON.stringify(r.data));
+            serviciosCreados.push(r.data.id);
+            return r.data.id;
+        };
+
+        before(async () => {
+            F.docente = await nuevoDocente('CatalogoDoc');
+            F.actividad = await nuevaActividad();
+            F.grupo = await crear({
+                tipo: 'Deporte', nombre: `D2-Grupo-${tag}`, actividad_id: F.actividad, docente_id: F.docente, nivel_id: apoyo.nivel,
+                dia_semana: 2, hora_inicio: '15:00', hora_fin: '16:30', cupo_max: 12,
+            });
+            F.apagado = await crear({
+                tipo: 'Deporte', nombre: `D2-Apagado-${tag}`, actividad_id: F.actividad, docente_id: F.docente, nivel_id: apoyo.nivel,
+                dia_semana: 4, hora_inicio: '15:00', hora_fin: '16:00',
+            });
+            assert.equal((await admin('PATCH', `/servicios/${F.apagado}`, { activo: false })).status, 200);
+            F.ruta = await crear({ tipo: 'Transporte', nombre: `D2-Ruta-${tag}`, ruta_id: apoyo.rutas[0] });
+            F.a1 = await alumno('Aguero');
+            F.a2 = await alumno('Bravo');
+            for (const alumnoId of [F.a1, F.a2]) {
+                const r = await admin('POST', '', { alumno_id: alumnoId, servicio_id: F.grupo, mes: MES, anio: ANIO });
+                assert.equal(r.status, 201, JSON.stringify(r.data));
+            }
+        });
+
+        after(async () => {
+            await db.query('DELETE FROM inscripciones_servicio WHERE alumno_id = ANY($1)', [alumnosCreados]);
+            await db.query('DELETE FROM servicios WHERE id = ANY($1)', [serviciosCreados]);
+            await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnosCreados]);
+        });
+
+        it('solo el administrador ve el catálogo completo', async () => {
+            assert.equal((await api('GET', '/api/inscripciones/servicios')).status, 403);
+            for (const t of [tokens.padre, tokens.docente, tokens.alumno]) {
+                assert.equal((await api('GET', '/api/inscripciones/servicios', { token: t })).status, 403);
+            }
+            assert.equal((await admin('GET', '/servicios')).status, 200);
+        });
+
+        it('lista también los servicios desactivados, con el detalle de cada tipo', async () => {
+            const r = await admin('GET', `/servicios?mes=${MES}&anio=${ANIO}`);
+            assert.equal(r.status, 200);
+            assert.equal(r.data.mes, MES);
+            assert.equal(r.data.anio, ANIO);
+            const por = (id) => r.data.servicios.find(s => s.id === id);
+
+            const grupo = por(F.grupo);
+            assert.equal(grupo.tipo, 'Deporte');
+            assert.equal(grupo.activo, true);
+            assert.equal(grupo.deporte, (await db.query('SELECT nombre FROM actividades_extra WHERE id = $1', [F.actividad])).rows[0].nombre);
+            assert.equal(grupo.nivel_id, apoyo.nivel);
+            assert.ok(grupo.nivel);
+            assert.match(grupo.docente, /CatalogoDoc/);
+            assert.equal(grupo.dia_semana, 2);
+            assert.equal(grupo.hora_inicio, '15:00');
+            assert.equal(grupo.hora_fin, '16:30');
+            assert.equal(grupo.cupo_max, 12);
+
+            const apagado = por(F.apagado);
+            assert.equal(apagado.activo, false, 'un servicio desactivado sigue en el listado del administrador');
+            const catalogoDeFamilia = await api('GET', `/api/inscripciones/catalogo?mes=${MES}&anio=${ANIO}`, { token: tokens.padre });
+            assert.ok(!catalogoDeFamilia.data.servicios.some(s => s.id === F.apagado), 'pero no se le ofrece a la familia');
+
+            const transporte = por(F.ruta);
+            assert.equal(transporte.tipo, 'Transporte');
+            assert.equal(transporte.ruta_id, apoyo.rutas[0]);
+            assert.ok(transporte.ruta);
+            assert.equal(transporte.docente, null);
+        });
+
+        it('cuenta los inscriptos activos del mes pedido', async () => {
+            const cuenta = async (query) => (await admin('GET', `/servicios${query}`)).data.servicios.find(s => s.id === F.grupo).inscriptos;
+            assert.equal(await cuenta(`?mes=${MES}&anio=${ANIO}`), 2);
+            assert.equal(await cuenta(`?mes=${MES + 1}&anio=${ANIO}`), 0, 'otro mes');
+
+            const inscripcion = (await db.query('SELECT id FROM inscripciones_servicio WHERE alumno_id = $1 AND servicio_id = $2', [F.a2, F.grupo])).rows[0].id;
+            assert.equal((await admin('DELETE', `/${inscripcion}`)).status, 200);
+            assert.equal(await cuenta(`?mes=${MES}&anio=${ANIO}`), 1, 'una baja deja de contar');
+        });
+
+        it('valida el mes y el año', async () => {
+            assert.equal((await admin('GET', '/servicios?mes=13&anio=2026')).status, 400);
+            assert.equal((await admin('GET', '/servicios?mes=abril&anio=2026')).status, 400);
+        });
+
+        describe('cursos: editar y eliminar', () => {
+            const cursos = [];
+            const alumnos = [];
+            const materias = [];
+            const crearCurso = async (division, cupo = 5, nivel = apoyo.nivel) => {
+                const r = await api('POST', '/api/academico/cursos', { token: tokens.admin, body: { nivel_id: nivel, division, cupo } });
+                assert.equal(r.status, 201, JSON.stringify(r.data));
+                cursos.push(r.data.id);
+                return r.data.id;
+            };
+            const editar = (id, division, cupo, token = tokens.admin) => api('PUT', `/api/academico/cursos/${id}`, { token, body: { division, cupo } });
+            const meterAlumno = async (cursoId) => {
+                const id = (await db.query(
+                    `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, curso_id) VALUES ('Curso', 'Prueba', $1, '2015-05-05', $2) RETURNING id`, [dniUnico(), cursoId])).rows[0].id;
+                alumnos.push(id);
+            };
+
+            after(async () => {
+                await db.query('DELETE FROM alumnos WHERE id = ANY($1)', [alumnos]);
+                await db.query('DELETE FROM materias WHERE id = ANY($1)', [materias]);
+                await db.query('DELETE FROM cursos WHERE id = ANY($1)', [cursos]);
+            });
+
+            it('edita la división y el cupo', async () => {
+                const id = await crearCurso(`E-${tag}`, 5);
+                const r = await editar(id, `  EE-${tag} `, 8);
+                assert.equal(r.status, 200, JSON.stringify(r.data));
+                const fila = (await db.query('SELECT division, cupo, nivel_id FROM cursos WHERE id = $1', [id])).rows[0];
+                assert.deepEqual(fila, { division: `EE-${tag}`, cupo: 8, nivel_id: apoyo.nivel });
+                assert.equal((await editar(id, `EE-${tag}`, 9)).status, 200, 'dejar la misma división no es un duplicado');
+            });
+
+            it('valida los datos y que el curso exista', async () => {
+                const id = await crearCurso(`V-${tag}`);
+                assert.equal((await editar(id, '', 5)).status, 400, 'división en blanco');
+                assert.equal((await editar(id, `V-${tag}`, 0)).status, 400, 'cupo cero');
+                assert.equal((await editar(id, `V-${tag}`, 2.5)).status, 400, 'cupo con decimales');
+                assert.equal((await editar('abc', `V-${tag}`, 5)).status, 400);
+                assert.equal((await editar(987654321, `V-${tag}`, 5)).status, 404);
+                for (const t of [tokens.docente, tokens.padre, tokens.alumno]) assert.equal((await editar(id, `V-${tag}`, 5, t)).status, 403);
+            });
+
+            it('el cupo no puede quedar por debajo de los alumnos del curso', async () => {
+                const id = await crearCurso(`C-${tag}`, 10);
+                for (let i = 0; i < 3; i++) await meterAlumno(id);
+                const menor = await editar(id, `C-${tag}`, 2);
+                assert.equal(menor.status, 409);
+                assert.match(menor.data.message, /3 alumnos/);
+                assert.equal((await editar(id, `C-${tag}`, 3)).status, 200, 'justo los alumnos que tiene');
+            });
+
+            it('no repite la división dentro del nivel', async () => {
+                const a = await crearCurso(`R-${tag}`);
+                const b = await crearCurso(`S-${tag}`);
+                const repetida = await editar(b, `r-${tag}`, 5);
+                assert.equal(repetida.status, 409);
+                assert.match(repetida.data.message, /esa división/);
+                const otroNivel = await crearCurso(`T-${tag}`, 5, apoyo.nivel2);
+                assert.equal((await editar(otroNivel, `R-${tag}`, 5)).status, 200, 'la misma división en otro nivel sí se permite');
+                assert.ok(a && b);
+            });
+
+            it('no elimina un curso con alumnos o materias, pero sí uno vacío', async () => {
+                const conAlumnos = await crearCurso(`DA-${tag}`);
+                await meterAlumno(conAlumnos);
+                const r1 = await api('DELETE', `/api/academico/cursos/${conAlumnos}`, { token: tokens.admin });
+                assert.equal(r1.status, 409);
+                assert.match(r1.data.message, /1 alumno/);
+
+                const conMaterias = await crearCurso(`DM-${tag}`);
+                materias.push((await db.query('INSERT INTO materias (nombre, curso_id) VALUES ($1, $2) RETURNING id', [`Borrar ${tag}`, conMaterias])).rows[0].id);
+                const r2 = await api('DELETE', `/api/academico/cursos/${conMaterias}`, { token: tokens.admin });
+                assert.equal(r2.status, 409);
+                assert.match(r2.data.message, /1 materia/);
+                for (const id of [conAlumnos, conMaterias]) assert.equal((await db.query('SELECT 1 FROM cursos WHERE id = $1', [id])).rowCount, 1, 'el curso sigue');
+
+                const vacio = await crearCurso(`DV-${tag}`);
+                assert.equal((await api('DELETE', `/api/academico/cursos/${vacio}`, { token: tokens.admin })).status, 200);
+                assert.equal((await db.query('SELECT 1 FROM cursos WHERE id = $1', [vacio])).rowCount, 0);
+                assert.equal((await api('DELETE', `/api/academico/cursos/${vacio}`, { token: tokens.admin })).status, 404);
+                assert.equal((await api('DELETE', '/api/academico/cursos/abc', { token: tokens.admin })).status, 400);
+            });
+        });
+    });
 });

@@ -18,6 +18,7 @@ router.post('/', familia, controller.inscribir);
 router.delete('/:id', familia, controller.darDeBaja);
 
 // Administración del catálogo de servicios
+router.get('/servicios', authMiddleware(['admin']), controller.listarServicios);
 router.post('/servicios', authMiddleware(['admin']), controller.crearServicio);
 router.patch('/servicios/:id', authMiddleware(['admin']), controller.actualizarServicio);
 

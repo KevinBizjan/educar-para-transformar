@@ -112,6 +112,17 @@ Una cuenta con rol **docente** o **alumno** se asocia a su legajo para que cada 
 * API: `GET /api/vinculos` y `PUT /api/vinculos/{alumnos|docentes}/:id` (administrador); `GET /api/academico/mis-cursos` (docente); `GET /api/academico/mis-hijos/:id/ficha`, `GET /api/academico/cursos-disponibles` y `POST /api/academico/mis-hijos/:id/inscribir-curso` (padre); `GET /api/academico/mi-ficha` (alumno), que usa además `/api/inscripciones/catalogo` y `/api/inscripciones` para sus deportes.
 * Los profesores por materia salen de los **Horarios** cargados en Gestión Académica, igual que en los reportes.
 
+## 🏅 Deportes, servicios e inscripciones
+
+Todo se administra desde la web, sin tocar la base de datos:
+
+* **Administrador → Servicios → Deportes y servicios:** crea los **grupos de deporte** (deporte, nivel, día y horario, **profesor responsable**, valor mensual y cupo), los servicios de transporte (uno por recorrido) y el comedor. Se pueden editar el valor, el cupo y el profesor, y desactivar un servicio (deja de ofrecerse a las familias). Los deportes en sí se crean en Gestión Académica → Actividades; para cambiar el nivel o el horario de un grupo se crea uno nuevo y se desactiva el anterior.
+* **Administrador → Servicios → Inscripciones a servicios:** inscribe a cualquier alumno en deportes, transporte o comedor, o lo da de baja, mes por mes.
+* **Padre → Servicios de mis hijos:** lo mismo para cada hijo. **Alumno → Mis deportes:** solo sus propios deportes.
+* **Reglas (las valida el servidor):** máximo 2 deportes por mes, sin horarios superpuestos, del nivel del alumno, un solo recorrido de transporte por mes, con cupo y sin inscripciones duplicadas. Una inscripción ya facturada no se puede dar de baja.
+* **Gestión Académica:** los cursos se pueden editar (división y cupo, que no puede quedar por debajo de los alumnos del curso) y no se eliminan si tienen alumnos o materias. En **Personal y Docentes**, el botón **A cargo** muestra las materias y los cursos de cada docente por nivel, con sus horarios; se asignan cargando un horario en Gestión Académica → Horarios.
+* **Primer arranque:** el catálogo se puede armar desde estas pantallas, o cargar de una vez con los datos de ejemplo (`SEED_ON_BOOT=true`, ver [DEPLOY.md](DEPLOY.md)).
+
 ## 🧱 Reglas de integridad
 
 Lo que garantiza la base de datos y no solo la pantalla (así dos pedidos simultáneos no pueden romperlo):
