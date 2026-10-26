@@ -2,6 +2,8 @@ const db = require('../config/database');
 
 const { NOMBRE_REGEX, esNombreValido, esEmailValido } = require('../utils/validators');
 const { docenteDeCuenta } = require('../services/vinculos.service');
+const { leerPeriodo, periodoDeFecha } = require('../utils/inscripciones');
+const { actividadPorId, inscriptosDeDeporte, estaInscriptoEnDeporte } = require('../services/actividades.service');
 
 const ESTADOS_ALUMNO = ['Activo', 'Inactivo', 'Egresado'];
 
@@ -306,16 +308,30 @@ exports.deleteMateria = async (req, res) => {
 
 // --- ACTIVIDADES EXTRACURRICULARES ---
 // Lista las actividades con la cantidad de inscriptos (para mostrar cupo disponible).
+// Los deportes se inscriben por grupo y por mes (sistema de inscripciones a servicios): sus inscriptos son los
+// alumnos activos del mes actual. Cultura e Idioma siguen en el sistema anterior. Un docente con la cuenta
+// vinculada ve solo los deportes que dicta; las demás actividades las ve completas.
 exports.getActividades = async (req, res) => {
     const query = `
-        SELECT actividades_extra.*,
-               (SELECT COUNT(*) FROM inscripciones_extra WHERE actividad_id = actividades_extra.id) as inscriptos
-        FROM actividades_extra
-        ORDER BY tipo, nombre
+        SELECT ae.*,
+               CASE WHEN ae.tipo = 'Deporte'
+                    THEN (SELECT COUNT(DISTINCT i.alumno_id)::int
+                          FROM inscripciones_servicio i
+                          JOIN servicios s ON s.id = i.servicio_id AND s.tipo = 'Deporte' AND s.actividad_id = ae.id
+                          WHERE i.estado = 'Activa' AND i.mes = $1 AND i.anio = $2
+                            AND ($3::int IS NULL OR s.docente_id = $3))
+                    ELSE (SELECT COUNT(*)::int FROM inscripciones_extra WHERE actividad_id = ae.id)
+               END AS inscriptos
+        FROM actividades_extra ae
+        WHERE $3::int IS NULL OR ae.tipo <> 'Deporte'
+           OR EXISTS (SELECT 1 FROM servicios s WHERE s.tipo = 'Deporte' AND s.actividad_id = ae.id AND s.docente_id = $3)
+        ORDER BY ae.tipo, ae.nombre
     `;
     try {
-        const result = await db.query(query);
-        res.json(result.rows);
+        const { mes, anio } = leerPeriodo({});
+        const result = await db.query(query, [mes, anio, await docenteDeLaSesion(req.user)]);
+        // El alumno ve acá solo Cultura e Idioma: sus deportes los elige por grupo en el catálogo de deportes.
+        res.json(req.user.rol === 'alumno' ? result.rows.filter((a) => a.tipo !== 'Deporte') : result.rows);
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
@@ -378,17 +394,21 @@ exports.deleteActividad = async (req, res) => {
     }
 };
 
-// El alumno se inscribe a una actividad. Valida cupo y que no se inscriba dos veces.
+// El alumno se inscribe a una actividad de Cultura o Idioma. Valida cupo y que no se inscriba dos veces.
 // La inscripción se guarda contra el usuario logueado (req.user.id).
+// Los deportes ya no se inscriben acá: tienen grupos por nivel, horario y profesor (POST /api/inscripciones).
 exports.inscribirActividad = async (req, res) => {
     const actividad_id = parseInt(req.body.actividad_id);
     const alumno_id = req.user.id;
     if (!actividad_id) return res.status(400).json({ message: "Actividad inválida" });
 
     try {
-        const actResult = await db.query('SELECT cupo_max FROM actividades_extra WHERE id = $1', [actividad_id]);
+        const actResult = await db.query('SELECT cupo_max, tipo FROM actividades_extra WHERE id = $1', [actividad_id]);
         const actividad = actResult.rows[0];
         if (!actividad) return res.status(404).json({ message: "La actividad no existe" });
+        if (actividad.tipo === 'Deporte') {
+            return res.status(409).json({ message: "Los deportes se inscriben por grupo (nivel, horario y profesor) desde la sección Deportes" });
+        }
 
         const countResult = await db.query('SELECT COUNT(*) as total FROM inscripciones_extra WHERE actividad_id = $1', [actividad_id]);
         if (countResult.rows[0].total >= actividad.cupo_max) {
@@ -411,13 +431,14 @@ exports.inscribirActividad = async (req, res) => {
     }
 };
 
-// Lista las actividades en las que está inscripto el alumno logueado.
+// Lista las actividades de Cultura e Idioma en las que está inscripto el alumno logueado
+// (sus deportes salen del sistema de inscripciones por grupo).
 exports.getMisInscripciones = async (req, res) => {
     const query = `
         SELECT inscripciones_extra.id as inscripcion_id, actividades_extra.*
         FROM inscripciones_extra
         JOIN actividades_extra ON inscripciones_extra.actividad_id = actividades_extra.id
-        WHERE inscripciones_extra.alumno_id = $1
+        WHERE inscripciones_extra.alumno_id = $1 AND actividades_extra.tipo <> 'Deporte'
         ORDER BY actividades_extra.tipo, actividades_extra.nombre
     `;
     try {
@@ -901,10 +922,19 @@ exports.deleteHorario = async (req, res) => {
 };
 
 // --- ASISTENCIA Y NOTAS DE ACTIVIDADES EXTRACURRICULARES (profesores) ---
-// Las inscripciones (inscripciones_extra.alumno_id) referencian al usuario alumno
-// que se inscribió, por eso se obtiene el nombre desde la tabla users.
+// Deportes: los inscriptos salen de los grupos del sistema de inscripciones (por mes) y el alumno se identifica
+// con su legajo (alumnos.id). Un docente con la cuenta vinculada trabaja solo con los grupos que dicta.
+// Cultura e Idioma: las inscripciones (inscripciones_extra.alumno_id) referencian al usuario alumno que se
+// inscribió, por eso se obtiene el nombre desde la tabla users.
+const docenteDeLaSesion = (usuario) => (usuario.rol === 'docente' ? docenteDeCuenta(usuario.id) : null);
+const ESTADOS_ASISTENCIA_ACTIVIDAD = ['Presente', 'Ausente', 'Tarde'];
+
 exports.getInscriptosActividad = async (req, res) => {
-    const { actividad_id } = req.params;
+    const actividadId = parseInt(req.params.actividad_id);
+    if (!actividadId) return res.status(400).json({ message: "Actividad inválida" });
+    const { mes, anio, error } = leerPeriodo(req.query);
+    if (error) return res.status(400).json({ message: error });
+
     const query = `
         SELECT ie.alumno_id, users.nombre AS alumno_nombre, ie.fecha_inscripcion,
                (SELECT nota FROM actividad_calificaciones
@@ -916,7 +946,12 @@ exports.getInscriptosActividad = async (req, res) => {
         ORDER BY users.nombre
     `;
     try {
-        const result = await db.query(query, [actividad_id]);
+        const actividad = await actividadPorId(actividadId);
+        if (!actividad) return res.status(404).json({ message: "La actividad no existe" });
+        if (actividad.tipo === 'Deporte') {
+            return res.json(await inscriptosDeDeporte(actividadId, mes, anio, await docenteDeLaSesion(req.user)));
+        }
+        const result = await db.query(query, [actividadId]);
         res.json(result.rows);
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -928,10 +963,29 @@ exports.registrarAsistenciaActividad = async (req, res) => {
     if (!actividad_id || !alumno_id || !estado) {
         return res.status(400).json({ message: "Datos incompletos" });
     }
-    if (!['Presente', 'Ausente', 'Tarde'].includes(estado)) {
+    if (!ESTADOS_ASISTENCIA_ACTIVIDAD.includes(estado)) {
         return res.status(400).json({ message: "Estado inválido" });
     }
     try {
+        const actividad = await actividadPorId(parseInt(actividad_id));
+        if (!actividad) return res.status(404).json({ message: "La actividad no existe" });
+
+        if (actividad.tipo === 'Deporte') {
+            // El alumno tiene que estar inscripto en un grupo de este deporte en el mes de la clase.
+            const dia = fecha || new Date().toLocaleDateString('en-CA');
+            if (!esFechaValida(dia)) return res.status(400).json({ message: "La fecha no es válida" });
+            const { mes, anio } = periodoDeFecha(dia);
+            const docenteId = await docenteDeLaSesion(req.user);
+            if (!(await estaInscriptoEnDeporte(actividad.id, parseInt(alumno_id), mes, anio, docenteId))) {
+                return res.status(409).json({ message: "El alumno no está inscripto en este deporte ese mes" });
+            }
+            const nueva = await db.query(
+                'INSERT INTO actividad_asistencias (actividad_id, legajo_id, fecha, estado) VALUES ($1, $2, $3, $4) RETURNING id',
+                [actividad.id, parseInt(alumno_id), dia, estado]
+            );
+            return res.status(201).json({ id: nueva.rows[0].id });
+        }
+
         const result = await db.query(
             'INSERT INTO actividad_asistencias (actividad_id, alumno_id, fecha, estado) VALUES ($1, $2, $3, $4) RETURNING id',
             [actividad_id, alumno_id, fecha || null, estado]
@@ -958,6 +1012,31 @@ exports.cargarCalificacionActividad = async (req, res) => {
         return res.status(400).json({ message: "La nota debe estar en el rango de 1 a 10" });
     }
     try {
+        const actividad = await actividadPorId(parseInt(actividad_id));
+        if (!actividad) return res.status(404).json({ message: "La actividad no existe" });
+
+        if (actividad.tipo === 'Deporte') {
+            // Solo se califica a quien está inscripto en un grupo de este deporte en el mes actual.
+            const { mes, anio } = leerPeriodo({});
+            const legajoId = parseInt(alumno_id);
+            const docenteId = await docenteDeLaSesion(req.user);
+            if (!(await estaInscriptoEnDeporte(actividad.id, legajoId, mes, anio, docenteId))) {
+                return res.status(409).json({ message: "El alumno no está inscripto en este deporte este mes" });
+            }
+            const previa = (await db.query(
+                'SELECT id FROM actividad_calificaciones WHERE actividad_id = $1 AND legajo_id = $2', [actividad.id, legajoId]
+            )).rows[0];
+            if (previa) {
+                await db.query('UPDATE actividad_calificaciones SET nota = $1 WHERE id = $2', [notaNum, previa.id]);
+                return res.json({ message: "Calificación de actividad actualizada", id: previa.id });
+            }
+            const nueva = await db.query(
+                'INSERT INTO actividad_calificaciones (actividad_id, legajo_id, nota) VALUES ($1, $2, $3) RETURNING id',
+                [actividad.id, legajoId, notaNum]
+            );
+            return res.status(201).json({ id: nueva.rows[0].id });
+        }
+
         const existingResult = await db.query(
             'SELECT id FROM actividad_calificaciones WHERE actividad_id = $1 AND alumno_id = $2',
             [actividad_id, alumno_id]

@@ -11,7 +11,7 @@
 // superar un cupo ni el máximo de deportes.
 const db = require('../config/database');
 const {
-    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, rangoDelMes, ReglaError,
+    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, rangoDelMes, puedeGestionarTipo, ReglaError,
 } = require('../utils/inscripciones');
 
 const { validarHorarioGrupo, seSuperponen, describirHorario } = require('../utils/deportes');
@@ -27,15 +27,26 @@ const responderError = (res, err) => {
     return res.status(500).json({ message: 'Error en el servidor' });
 };
 
-// Un padre solo accede a sus hijos; el administrador, a cualquier alumno.
+// Un padre solo accede a sus hijos, un alumno solo a su propio legajo (el que tiene vinculado a su cuenta)
+// y el administrador, a cualquier alumno.
 const alumnoAccesible = async (consulta, alumnoId, usuario) => {
-    const r = await consulta('SELECT id, tutor_id FROM alumnos WHERE id = $1', [alumnoId]);
+    const r = await consulta('SELECT id, tutor_id, user_id FROM alumnos WHERE id = $1', [alumnoId]);
     const alumno = r.rows[0];
     if (!alumno) throw new ReglaError(404, 'Alumno no encontrado');
     if (usuario.rol === 'padre' && alumno.tutor_id !== usuario.id) {
         throw new ReglaError(403, 'Solo podés gestionar a tus propios hijos');
     }
+    if (usuario.rol === 'alumno' && alumno.user_id !== usuario.id) {
+        throw new ReglaError(403, 'Solo podés gestionar tus propias inscripciones');
+    }
     return alumno;
+};
+
+// El alumno solo gestiona deportes; el resto lo decide la familia.
+const verificarTipoPermitido = (usuario, tipo) => {
+    if (!puedeGestionarTipo(usuario.rol, tipo)) {
+        throw new ReglaError(403, 'Los alumnos solo gestionan sus deportes: el transporte y el comedor los decide la familia');
+    }
 };
 
 // --- Catálogo con cupos del mes ---
@@ -58,7 +69,7 @@ exports.getCatalogo = async (req, res) => {
              LEFT JOIN personal p ON p.id = s.docente_id
              LEFT JOIN inscripciones_servicio i
                     ON i.servicio_id = s.id AND i.mes = $1 AND i.anio = $2 AND i.estado = 'Activa'
-             WHERE s.activo = TRUE
+             WHERE s.activo = TRUE ${req.user.rol === 'alumno' ? "AND s.tipo = 'Deporte'" : ''}
              GROUP BY s.id, a.nombre, n.nombre, p.nombre, p.apellido
              ORDER BY s.tipo, s.nombre`,
             [mes, anio]
@@ -221,6 +232,7 @@ exports.inscribir = async (req, res) => {
         if (!servicio || !servicio.activo) {
             throw new ReglaError(404, 'El servicio no existe o no está disponible');
         }
+        verificarTipoPermitido(req.user, servicio.tipo);
 
         const previa = (await consulta(
             'SELECT id, estado FROM inscripciones_servicio WHERE alumno_id = $1 AND servicio_id = $2 AND mes = $3 AND anio = $4',
@@ -312,9 +324,13 @@ exports.darDeBaja = async (req, res) => {
     if (!id) return res.status(400).json({ message: 'Inscripción inválida' });
 
     try {
-        const insc = (await db.query('SELECT id, alumno_id, estado FROM inscripciones_servicio WHERE id = $1', [id])).rows[0];
+        const insc = (await db.query(
+            `SELECT i.id, i.alumno_id, i.estado, s.tipo
+             FROM inscripciones_servicio i JOIN servicios s ON s.id = i.servicio_id WHERE i.id = $1`, [id]
+        )).rows[0];
         if (!insc) return res.status(404).json({ message: 'Inscripción no encontrada' });
         await alumnoAccesible((t, p) => db.query(t, p), insc.alumno_id, req.user);
+        verificarTipoPermitido(req.user, insc.tipo);
 
         if (insc.estado === 'Baja') return res.json({ message: 'La inscripción ya estaba dada de baja' });
 

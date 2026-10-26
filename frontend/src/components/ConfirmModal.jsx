@@ -18,7 +18,7 @@ const ConfirmModal = ({
             <h2 style={{ fontSize: '1.15rem', color: 'var(--text)', fontWeight: 800, margin: '0 0 12px' }}>{title}</h2>
             <p style={{ color: '#64748b', fontSize: '0.9rem', margin: '0 0 24px', whiteSpace: 'pre-line' }}>{message}</p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-                <button onClick={onCancel} className="btn btn-hero-outline" style={{ fontSize: '0.85rem', padding: '10px 18px' }}>{cancelLabel}</button>
+                <button onClick={onCancel} className="btn btn-hero-outline" style={{ fontSize: '0.85rem', padding: '10px 18px', color: 'var(--blue)', borderColor: 'var(--blue)' }}>{cancelLabel}</button>
                 <button onClick={onConfirm} className="btn" style={{ background: 'var(--orange)', color: 'white', fontSize: '0.85rem', padding: '10px 18px' }}>{confirmLabel}</button>
             </div>
         </div>

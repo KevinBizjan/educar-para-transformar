@@ -52,16 +52,3 @@ exports.getActividadesExtra = async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 };
-
-exports.inscribirActividad = async (req, res) => {
-    const { alumno_id, actividad_id } = req.body;
-    try {
-        const result = await db.query(
-            'INSERT INTO inscripciones_extra (alumno_id, actividad_id) VALUES ($1, $2) RETURNING id',
-            [alumno_id, actividad_id]
-        );
-        res.status(201).json({ id: result.rows[0].id });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-};

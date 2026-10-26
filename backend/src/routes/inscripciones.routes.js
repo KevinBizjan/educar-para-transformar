@@ -3,7 +3,8 @@ const router = express.Router();
 const controller = require('../controllers/inscripciones.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 
-const familia = authMiddleware(['padre', 'admin']);
+// La familia gestiona los tres tipos de servicio; el alumno, solo sus propios deportes (lo controla el controlador).
+const familia = authMiddleware(['padre', 'admin', 'alumno']);
 
 // Pantalla "Mis hijos" de la app: hijos, servicios del mes, comedor y saldo (solo padres)
 router.get('/resumen-familia', authMiddleware(['padre']), controller.getResumenFamilia);

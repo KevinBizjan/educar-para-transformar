@@ -12,6 +12,19 @@ const validarMesAnio = (mes, anio) => {
     return '';
 };
 
+// Mes y año de un pedido (?mes=&anio=): por defecto, el mes actual. `error` trae el texto si no son válidos.
+const leerPeriodo = (query, hoy = new Date()) => {
+    const mes = query.mes === undefined ? hoy.getMonth() + 1 : Number(query.mes);
+    const anio = query.anio === undefined ? hoy.getFullYear() : Number(query.anio);
+    return { mes, anio, error: validarMesAnio(mes, anio) };
+};
+
+// Mes y año de una fecha AAAA-MM-DD.
+const periodoDeFecha = (fecha) => {
+    const [anio, mes] = String(fecha).slice(0, 10).split('-').map(Number);
+    return { mes, anio };
+};
+
 // Además del formato, no permite inscribir en un mes que ya pasó (el mes actual sí se acepta).
 const validarPeriodoInscripcion = (mes, anio, hoy = new Date()) => {
     const formato = validarMesAnio(mes, anio);
@@ -29,6 +42,15 @@ const rangoDelMes = (mes, anio) => {
     return { desde, hasta };
 };
 
+// Qué tipos de servicio puede gestionar (inscribir y dar de baja) cada rol. El alumno gestiona sus propios
+// deportes, como antes hacía con las actividades; el transporte y el comedor los decide la familia.
+const TIPOS_POR_ROL = {
+    admin: ['Deporte', 'Transporte', 'Comedor'],
+    padre: ['Deporte', 'Transporte', 'Comedor'],
+    alumno: ['Deporte'],
+};
+const puedeGestionarTipo = (rol, tipo) => (TIPOS_POR_ROL[rol] || []).includes(tipo);
+
 // Error de una regla de negocio: lleva el código HTTP con el que se responde.
 class ReglaError extends Error {
     constructor(estado, mensaje) {
@@ -37,4 +59,6 @@ class ReglaError extends Error {
     }
 }
 
-module.exports = { MAX_DEPORTES_POR_ALUMNO, validarMesAnio, validarPeriodoInscripcion, rangoDelMes, ReglaError };
+module.exports = {
+    MAX_DEPORTES_POR_ALUMNO, validarMesAnio, leerPeriodo, periodoDeFecha, validarPeriodoInscripcion, rangoDelMes, puedeGestionarTipo, ReglaError,
+};
