@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import Toast from '../components/Toast';
 import ConfirmModal from '../components/ConfirmModal';
 import MisCursosDocente from '../components/MisCursosDocente';
+import PanelPorSecciones, { Seccion } from '../components/PanelPorSecciones';
 
 // Fecha de hoy en hora local (AAAA-MM-DD). toISOString() usa UTC y de noche
 // devolvería el día siguiente.
@@ -376,318 +377,372 @@ const DocenteDashboard = () => {
         } catch (err) { console.error(err); showToast('Error de conexión', 'error'); }
     };
 
+    // Lo que muestran los accesos del panel
+    const estadoAsistencia = `${alumnos.length} ${alumnos.length === 1 ? 'alumno' : 'alumnos'}`;
+    const estadoNotas = `${materias.length} ${materias.length === 1 ? 'materia' : 'materias'}`;
+    const estadoActividades = `${actividades.length} ${actividades.length === 1 ? 'actividad' : 'actividades'}`;
+
     return (
         <DashboardLayout title="Panel Docente">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '24px' }}>
-                <MisCursosDocente />
-
-                {/* Asistencia Diaria */}
-                <div className="dashboard-card" style={cardStyle}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '12px' }}>
-                        <h3 style={{ fontSize: '1.1rem', color: 'var(--blue)', fontWeight: 800 }}>📋 Toma de Asistencia</h3>
-                        <button 
-                            onClick={markAllPresent}
-                            style={{ background: 'none', border: 'none', color: 'var(--green)', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer' }}
-                        >
-                            ✓ MARCAR TODOS
-                        </button>
-                    </div>
-
-                    <div style={{ marginTop: '12px' }}>
-                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Materia / Horario</label>
-                        <select
-                            value={asistenciaMateriaSel}
-                            onChange={(e) => setAsistenciaMateriaSel(e.target.value)}
-                            style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.85rem' }}
-                        >
-                            <option value="">General (sin materia)</option>
-                            {materias.map(m => (
-                                <option key={m.id} value={m.id}>
-                                    {m.nombre} ({m.nivel_nombre || 'Nivel'} - Div. {m.division || 'A'})
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div style={{ marginTop: '16px' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ textAlign: 'left', fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase' }}>
-                                    <th style={{ padding: '10px 0' }}>Alumno</th>
-                                    <th>Estado</th>
-                                    <th style={{ textAlign: 'right' }}>Historial</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(() => {
-                                    const lista = alumnosDeAsistencia();
-                                    return lista.map((a) => (
-                                        <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '12px 0', fontWeight: 700, fontSize: '0.9rem' }}>{a.nombre} {a.apellido}</td>
-                                            <td>
-                                                <select 
-                                                    value={a.asistencia} 
-                                                    onChange={(e) => handleAsistenciaChange(a.id, e.target.value)}
-                                                    style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.85rem', background: a.asistencia === 'Presente' ? '#f0fdf4' : '#fef2f2' }}
-                                                >
-                                                    <option value="Presente">Presente</option>
-                                                    <option value="Ausente">Ausente</option>
-                                                    <option value="Tarde">Tarde</option>
-                                                </select>
-                                            </td>
-                                            <td style={{ textAlign: 'right' }}>
-                                                <button
-                                                    onClick={() => verHistorialAlumno(a)}
-                                                    style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                                                >
-                                                    👁️ Ver
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ));
-                                })()}
-                            </tbody>
-                        </table>
-                        <button onClick={() => guardarAsistencia(false)} className="btn btn-green" style={{ width: '100%', marginTop: '20px', fontSize: '0.85rem' }}>Guardar Asistencia del Día</button>
-                    </div>
-                </div>
-
-                {/* Carga de Notas */}
-                <div className="dashboard-card" style={cardStyle}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '12px' }}>
-                        <h3 style={{ fontSize: '1.1rem', color: 'var(--blue)', fontWeight: 800 }}>📝 Calificaciones</h3>
-                        {(() => {
-                            const matSelObj = materias.find(m => String(m.id) === String(materiaSel));
-                            return (
-                                <span style={{ fontSize: '0.75rem', background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '50px', fontWeight: 800 }}>
-                                    {matSelObj ? `${matSelObj.nivel_nombre || ''} Div. ${matSelObj.division || 'A'}` : 'Seleccionar Materia'}
-                                </span>
-                            );
-                        })()}
-                    </div>
-
-                    <div style={{ marginTop: '16px' }}>
-                        <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Materia</label>
-                        <select
-                            value={materiaSel}
-                            onChange={(e) => setMateriaSel(e.target.value)}
-                            style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.9rem' }}
-                        >
-                            {materias.length === 0 ? (
-                                <option value="">Materia General (sin configurar)</option>
-                            ) : (
-                                materias.map(m => <option key={m.id} value={m.id}>{m.nombre} ({m.nivel_nombre || 'Nivel'} - Div. {m.division || 'A'})</option>)
-                            )}
-                        </select>
-                    </div>
-
-                    <div style={{ marginTop: '20px' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr style={{ textAlign: 'left', fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase' }}>
-                                    <th style={{ padding: '10px 0' }}>Estudiante</th>
-                                    <th>Nota</th>
-                                    <th style={{ textAlign: 'right' }}>Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {(() => {
-                                    const matGradObj = materias.find(m => String(m.id) === String(materiaSel));
-                                    const listaNotas = matGradObj && matGradObj.curso_id ? alumnos.filter(a => a.curso_id === matGradObj.curso_id) : alumnos;
-                                    return listaNotas.map((a) => (
-                                        <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '14px 0', fontWeight: 700, fontSize: '0.9rem' }}>
-                                                {a.apellido}, {a.nombre}
-                                                {calificacionesMateriaMap[a.id] != null && (
-                                                    <span style={{ display: 'block', fontSize: '0.7rem', color: '#166534', fontWeight: 600 }}>
-                                                        Cargada: {calificacionesMateriaMap[a.id]}
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <input
-                                                    type="text"
-                                                    inputMode="numeric" maxLength={4}
-                                                    placeholder="1-10"
-                                                    value={a.notaTmp}
-                                                    onChange={(e) => handleNotaChange(a.id, e.target.value)}
-                                                    style={{ 
-                                                        width: '50px', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', 
-                                                        textAlign: 'center', fontWeight: 700,
-                                                        backgroundColor: getNotaColor(a.notaTmp)
-                                                    }}
-                                                />
-                                            </td>
-                                            <td style={{ textAlign: 'right' }}>
-                                                <button 
-                                                    onClick={() => saveNota(a.id, a.notaTmp)}
-                                                    style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', marginRight: '8px' }}
-                                                >
-                                                    Guardar
-                                                </button>
-                                                <button
-                                                    onClick={() => verHistorialAlumno(a)}
-                                                    style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
-                                                >
-                                                    👁️ Historial
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ));
-                                })()}
-                            </tbody>
-                        </table>
-                        <button onClick={finalizarTrimestre} className="btn btn-hero-orange" style={{ width: '100%', marginTop: '20px', fontSize: '0.85rem' }}>Finalizar Carga Trimestral</button>
-                    </div>
-                </div>
-
-                {/* Agenda y Tareas */}
-                <div className="dashboard-card" style={cardStyle}>
-                    <h3 style={cardTitleStyle}>🗓️ Mi Agenda</h3>
-                    <div style={{ marginTop: '16px' }}>
-                        <div style={itemTarea}>
-                            <div style={dotStyle}></div>
-                            <div style={{ flex: 1 }}>
-                                <p style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text)' }}>Examen de Historia</p>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-sm)' }}>Viernes 15 - 08:30hs | Aula 12</p>
-                            </div>
-                            <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--orange)' }}>PRÓXIMO</span>
+            <PanelPorSecciones ayuda="Elegí qué querés hacer.">
+                <Seccion
+                    id="asistencia"
+                    icono="📋"
+                    titulo="Toma de asistencia"
+                    estado={estadoAsistencia}
+                >
+                    {/* Asistencia Diaria */}
+                    <div className="dashboard-card" style={cardStyle}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '12px' }}>
+                            <h3 style={{ fontSize: '1.1rem', color: 'var(--blue)', fontWeight: 800 }}>📋 Toma de Asistencia</h3>
+                            <button 
+                                onClick={markAllPresent}
+                                style={{ background: 'none', border: 'none', color: 'var(--green)', fontSize: '0.7rem', fontWeight: 800, cursor: 'pointer' }}
+                            >
+                                ✓ MARCAR TODOS
+                            </button>
                         </div>
-                        <div style={itemTarea}>
-                            <div style={{ ...dotStyle, background: 'var(--orange)' }}></div>
-                            <div style={{ flex: 1 }}>
-                                <p style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text)' }}>Entrega de Planificaciones</p>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-sm)' }}>Lunes 18 - Todo el día</p>
-                            </div>
-                        </div>
-                        <div style={itemTarea}>
-                            <div style={{ ...dotStyle, background: 'var(--violet)' }}></div>
-                            <div style={{ flex: 1 }}>
-                                <p style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text)' }}>Capacitación Docente</p>
-                                <p style={{ fontSize: '0.75rem', color: 'var(--text-sm)' }}>Miércoles 20 - 14:00hs (Virtual)</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
-                {/* Comunicados a Alumnos */}
-                <div className="dashboard-card" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
-                    <h3 style={cardTitleStyle}>📣 Comunicado Institucional</h3>
-                    <div style={{ marginTop: '16px', display: 'flex', gap: '16px', flexDirection: 'column' }}>
-                        <textarea
-                            value={aviso}
-                            onChange={(e) => setAviso(e.target.value)}
-                            placeholder="Escribe el mensaje para tus alumnos o colegas..."
-                            style={{ width: '100%', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', resize: 'none', height: '100px', fontFamily: 'inherit', outline: 'none' }}
-                        ></textarea>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Destinatario:</label>
-                                <select
-                                    value={avisoDestino}
-                                    onChange={(e) => setAvisoDestino(e.target.value)}
-                                    style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 700 }}
-                                >
-                                    <option value="all">Todos los perfiles</option>
-                                    <option value="alumno">Solo Alumnos</option>
-                                    <option value="padre">Solo Padres/Tutores</option>
-                                    <option value="docente">Solo Docentes</option>
-                                </select>
-                            </div>
-                            <button onClick={publicarAviso} className="btn btn-violet" style={{ padding: '12px 28px' }}>Publicar Aviso →</button>
+                        <div style={{ marginTop: '12px' }}>
+                            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Materia / Horario</label>
+                            <select
+                                value={asistenciaMateriaSel}
+                                onChange={(e) => setAsistenciaMateriaSel(e.target.value)}
+                                style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.85rem' }}
+                            >
+                                <option value="">General (sin materia)</option>
+                                {materias.map(m => (
+                                    <option key={m.id} value={m.id}>
+                                        {m.nombre} ({m.nivel_nombre || 'Nivel'} - Div. {m.division || 'A'})
+                                    </option>
+                                ))}
+                            </select>
                         </div>
-                    </div>
-                </div>
 
-                {/* Actividades Extracurriculares / Idiomas */}
-                <div className="dashboard-card" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
-                        <h3 style={{ fontSize: '1.1rem', color: 'var(--blue)', fontWeight: 800 }}>🎯 Actividades / Idiomas</h3>
-                        <select
-                            value={actividadSel}
-                            onChange={(e) => setActividadSel(e.target.value)}
-                            style={{ padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.85rem' }}
-                        >
-                            {actividades.length === 0 ? (
-                                <option value="">No hay actividades</option>
-                            ) : (
-                                actividades.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.tipo})</option>)
-                            )}
-                        </select>
-                    </div>
-
-                    <div style={{ marginTop: '20px' }}>
-                        {inscriptos.length === 0 ? (
-                            <p style={{ fontSize: '0.85rem', color: '#64748b', padding: '12px 0' }}>
-                                No hay inscriptos en esta actividad todavía.
-                            </p>
-                        ) : (
+                        <div style={{ marginTop: '16px' }}>
                             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr style={{ textAlign: 'left', fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase' }}>
-                                        <th style={{ padding: '10px 0' }}>Inscripto</th>
-                                        <th>Asistencia</th>
-                                        <th>Nota (1-10)</th>
+                                        <th style={{ padding: '10px 0' }}>Alumno</th>
+                                        <th>Estado</th>
+                                        <th style={{ textAlign: 'right' }}>Historial</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(() => {
+                                        const lista = alumnosDeAsistencia();
+                                        return lista.map((a) => (
+                                            <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{ padding: '12px 0', fontWeight: 700, fontSize: '0.9rem' }}>{a.nombre} {a.apellido}</td>
+                                                <td>
+                                                    <select 
+                                                        value={a.asistencia} 
+                                                        onChange={(e) => handleAsistenciaChange(a.id, e.target.value)}
+                                                        style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.85rem', background: a.asistencia === 'Presente' ? '#f0fdf4' : '#fef2f2' }}
+                                                    >
+                                                        <option value="Presente">Presente</option>
+                                                        <option value="Ausente">Ausente</option>
+                                                        <option value="Tarde">Tarde</option>
+                                                    </select>
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <button
+                                                        onClick={() => verHistorialAlumno(a)}
+                                                        style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                                                    >
+                                                        👁️ Ver
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ));
+                                    })()}
+                                </tbody>
+                            </table>
+                            <button onClick={() => guardarAsistencia(false)} className="btn btn-green" style={{ width: '100%', marginTop: '20px', fontSize: '0.85rem' }}>Guardar Asistencia del Día</button>
+                        </div>
+                    </div>
+                </Seccion>
+
+                <Seccion
+                    id="notas"
+                    icono="📝"
+                    titulo="Calificaciones"
+                    estado={estadoNotas}
+                >
+                    {/* Carga de Notas */}
+                    <div className="dashboard-card" style={cardStyle}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '12px' }}>
+                            <h3 style={{ fontSize: '1.1rem', color: 'var(--blue)', fontWeight: 800 }}>📝 Calificaciones</h3>
+                            {(() => {
+                                const matSelObj = materias.find(m => String(m.id) === String(materiaSel));
+                                return (
+                                    <span style={{ fontSize: '0.75rem', background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '50px', fontWeight: 800 }}>
+                                        {matSelObj ? `${matSelObj.nivel_nombre || ''} Div. ${matSelObj.division || 'A'}` : 'Seleccionar Materia'}
+                                    </span>
+                                );
+                            })()}
+                        </div>
+
+                        <div style={{ marginTop: '16px' }}>
+                            <label style={{ display: 'block', fontSize: '0.7rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Materia</label>
+                            <select
+                                value={materiaSel}
+                                onChange={(e) => setMateriaSel(e.target.value)}
+                                style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.9rem' }}
+                            >
+                                {materias.length === 0 ? (
+                                    <option value="">Materia General (sin configurar)</option>
+                                ) : (
+                                    materias.map(m => <option key={m.id} value={m.id}>{m.nombre} ({m.nivel_nombre || 'Nivel'} - Div. {m.division || 'A'})</option>)
+                                )}
+                            </select>
+                        </div>
+
+                        <div style={{ marginTop: '20px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ textAlign: 'left', fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase' }}>
+                                        <th style={{ padding: '10px 0' }}>Estudiante</th>
+                                        <th>Nota</th>
                                         <th style={{ textAlign: 'right' }}>Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {inscriptos.map((i) => (
-                                        <tr key={i.alumno_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                            <td style={{ padding: '12px 0', fontWeight: 700, fontSize: '0.9rem' }}>
-                                                {i.alumno_nombre}
-                                                {i.ultima_nota != null && (
-                                                    <span style={{ marginLeft: '8px', fontSize: '0.7rem', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '50px', fontWeight: 800 }}>Última: {i.ultima_nota}</span>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <select
-                                                    value={i.asistencia}
-                                                    onChange={(e) => handleAsistActChange(i.alumno_id, e.target.value)}
-                                                    style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.85rem', background: i.asistencia === 'Presente' ? '#f0fdf4' : '#fef2f2' }}
-                                                >
-                                                    <option value="Presente">Presente</option>
-                                                    <option value="Ausente">Ausente</option>
-                                                    <option value="Tarde">Tarde</option>
-                                                </select>
-                                            </td>
-                                            <td>
-                                                <input
-                                                    type="text" inputMode="numeric" maxLength={4}
-                                                    placeholder="1-10"
-                                                    value={i.notaTmp}
-                                                    onChange={(e) => handleNotaActChange(i.alumno_id, e.target.value)}
-                                                    style={{ width: '50px', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 700, backgroundColor: getNotaColor(i.notaTmp) }}
-                                                />
-                                            </td>
-                                            <td style={{ textAlign: 'right' }}>
-                                                <button onClick={() => saveAsistenciaActividad(i.alumno_id, i.asistencia)} style={{ background: 'none', border: 'none', color: 'var(--green)', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', marginRight: '10px' }}>Asist.</button>
-                                                <button onClick={() => saveNotaActividad(i.alumno_id, i.notaTmp)} style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>Nota</button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                    {(() => {
+                                        const matGradObj = materias.find(m => String(m.id) === String(materiaSel));
+                                        const listaNotas = matGradObj && matGradObj.curso_id ? alumnos.filter(a => a.curso_id === matGradObj.curso_id) : alumnos;
+                                        return listaNotas.map((a) => (
+                                            <tr key={a.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{ padding: '14px 0', fontWeight: 700, fontSize: '0.9rem' }}>
+                                                    {a.apellido}, {a.nombre}
+                                                    {calificacionesMateriaMap[a.id] != null && (
+                                                        <span style={{ display: 'block', fontSize: '0.7rem', color: '#166534', fontWeight: 600 }}>
+                                                            Cargada: {calificacionesMateriaMap[a.id]}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="text"
+                                                        inputMode="numeric" maxLength={4}
+                                                        placeholder="1-10"
+                                                        value={a.notaTmp}
+                                                        onChange={(e) => handleNotaChange(a.id, e.target.value)}
+                                                        style={{ 
+                                                            width: '50px', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', 
+                                                            textAlign: 'center', fontWeight: 700,
+                                                            backgroundColor: getNotaColor(a.notaTmp)
+                                                        }}
+                                                    />
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <button 
+                                                        onClick={() => saveNota(a.id, a.notaTmp)}
+                                                        style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', marginRight: '8px' }}
+                                                    >
+                                                        Guardar
+                                                    </button>
+                                                    <button
+                                                        onClick={() => verHistorialAlumno(a)}
+                                                        style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '0.75rem', fontWeight: 700, cursor: 'pointer' }}
+                                                    >
+                                                        👁️ Historial
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ));
+                                    })()}
                                 </tbody>
                             </table>
-                        )}
+                            <button onClick={finalizarTrimestre} className="btn btn-hero-orange" style={{ width: '100%', marginTop: '20px', fontSize: '0.85rem' }}>Finalizar Carga Trimestral</button>
+                        </div>
                     </div>
-                </div>
+                </Seccion>
 
-                {/* Servicios Extra (Comedor / Enfermería) */}
-                <div className="dashboard-card" style={cardStyle}>
-                    <h3 style={cardTitleStyle}>🏥 Servicios Especiales</h3>
-                    <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <button onClick={() => setModal('incidencia')} className="btn" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fee2e2', fontSize: '0.85rem' }}>
-                            🚑 Reportar Incidencia Médica
-                        </button>
-                        <button onClick={() => setModal('comedor')} className="btn" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #dcfce7', fontSize: '0.85rem' }}>
-                            🍎 Asistencia Comedor
-                        </button>
-                        <button onClick={() => setModal('reserva')} className="btn" style={{ background: '#eff6ff', color: '#1e40af', border: '1px solid #dbeafe', fontSize: '0.85rem' }}>
-                            🧪 Reservar Laboratorio
-                        </button>
+                <Seccion
+                    id="cursos"
+                    icono="🗓️"
+                    titulo="Mis cursos y horarios"
+                    estado="Cursos, materias y horarios"
+                >
+                    <MisCursosDocente />
+                </Seccion>
+
+                <Seccion
+                    id="actividades"
+                    icono="🎯"
+                    titulo="Actividades / Idiomas"
+                    estado={estadoActividades}
+                >
+                    {/* Actividades Extracurriculares / Idiomas */}
+                    <div className="dashboard-card" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #f1f5f9', paddingBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
+                            <h3 style={{ fontSize: '1.1rem', color: 'var(--blue)', fontWeight: 800 }}>🎯 Actividades / Idiomas</h3>
+                            <select
+                                value={actividadSel}
+                                onChange={(e) => setActividadSel(e.target.value)}
+                                style={{ padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.85rem' }}
+                            >
+                                {actividades.length === 0 ? (
+                                    <option value="">No hay actividades</option>
+                                ) : (
+                                    actividades.map(a => <option key={a.id} value={a.id}>{a.nombre} ({a.tipo})</option>)
+                                )}
+                            </select>
+                        </div>
+
+                        <div style={{ marginTop: '20px' }}>
+                            {inscriptos.length === 0 ? (
+                                <p style={{ fontSize: '0.85rem', color: '#64748b', padding: '12px 0' }}>
+                                    No hay inscriptos en esta actividad todavía.
+                                </p>
+                            ) : (
+                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                    <thead>
+                                        <tr style={{ textAlign: 'left', fontSize: '0.75rem', color: '#64748b', textTransform: 'uppercase' }}>
+                                            <th style={{ padding: '10px 0' }}>Inscripto</th>
+                                            <th>Asistencia</th>
+                                            <th>Nota (1-10)</th>
+                                            <th style={{ textAlign: 'right' }}>Acción</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {inscriptos.map((i) => (
+                                            <tr key={i.alumno_id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{ padding: '12px 0', fontWeight: 700, fontSize: '0.9rem' }}>
+                                                    {i.alumno_nombre}
+                                                    {i.ultima_nota != null && (
+                                                        <span style={{ marginLeft: '8px', fontSize: '0.7rem', background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: '50px', fontWeight: 800 }}>Última: {i.ultima_nota}</span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <select
+                                                        value={i.asistencia}
+                                                        onChange={(e) => handleAsistActChange(i.alumno_id, e.target.value)}
+                                                        style={{ padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', fontSize: '0.85rem', background: i.asistencia === 'Presente' ? '#f0fdf4' : '#fef2f2' }}
+                                                    >
+                                                        <option value="Presente">Presente</option>
+                                                        <option value="Ausente">Ausente</option>
+                                                        <option value="Tarde">Tarde</option>
+                                                    </select>
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="text" inputMode="numeric" maxLength={4}
+                                                        placeholder="1-10"
+                                                        value={i.notaTmp}
+                                                        onChange={(e) => handleNotaActChange(i.alumno_id, e.target.value)}
+                                                        style={{ width: '50px', padding: '6px', borderRadius: '6px', border: '1px solid #e2e8f0', textAlign: 'center', fontWeight: 700, backgroundColor: getNotaColor(i.notaTmp) }}
+                                                    />
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <button onClick={() => saveAsistenciaActividad(i.alumno_id, i.asistencia)} style={{ background: 'none', border: 'none', color: 'var(--green)', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer', marginRight: '10px' }}>Asist.</button>
+                                                    <button onClick={() => saveNotaActividad(i.alumno_id, i.notaTmp)} style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: '0.75rem', fontWeight: 800, cursor: 'pointer' }}>Nota</button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
                     </div>
-                </div>
-            </div>
+                </Seccion>
+
+                <Seccion
+                    id="comunicados"
+                    icono="📣"
+                    titulo="Comunicado institucional"
+                    estado="Publicar un aviso"
+                >
+                    {/* Comunicados a Alumnos */}
+                    <div className="dashboard-card" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
+                        <h3 style={cardTitleStyle}>📣 Comunicado Institucional</h3>
+                        <div style={{ marginTop: '16px', display: 'flex', gap: '16px', flexDirection: 'column' }}>
+                            <textarea
+                                value={aviso}
+                                onChange={(e) => setAviso(e.target.value)}
+                                placeholder="Escribe el mensaje para tus alumnos o colegas..."
+                                style={{ width: '100%', padding: '16px', borderRadius: '12px', border: '1px solid #e2e8f0', resize: 'none', height: '100px', fontFamily: 'inherit', outline: 'none' }}
+                            ></textarea>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <label style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase' }}>Destinatario:</label>
+                                    <select
+                                        value={avisoDestino}
+                                        onChange={(e) => setAvisoDestino(e.target.value)}
+                                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.85rem', fontWeight: 700 }}
+                                    >
+                                        <option value="all">Todos los perfiles</option>
+                                        <option value="alumno">Solo Alumnos</option>
+                                        <option value="padre">Solo Padres/Tutores</option>
+                                        <option value="docente">Solo Docentes</option>
+                                    </select>
+                                </div>
+                                <button onClick={publicarAviso} className="btn btn-violet" style={{ padding: '12px 28px' }}>Publicar Aviso →</button>
+                            </div>
+                        </div>
+                    </div>
+                </Seccion>
+
+                <Seccion
+                    id="agenda"
+                    icono="📅"
+                    titulo="Mi agenda"
+                    estado="Exámenes y tareas"
+                >
+                    {/* Agenda y Tareas */}
+                    <div className="dashboard-card" style={cardStyle}>
+                        <h3 style={cardTitleStyle}>🗓️ Mi Agenda</h3>
+                        <div style={{ marginTop: '16px' }}>
+                            <div style={itemTarea}>
+                                <div style={dotStyle}></div>
+                                <div style={{ flex: 1 }}>
+                                    <p style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text)' }}>Examen de Historia</p>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-sm)' }}>Viernes 15 - 08:30hs | Aula 12</p>
+                                </div>
+                                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--orange)' }}>PRÓXIMO</span>
+                            </div>
+                            <div style={itemTarea}>
+                                <div style={{ ...dotStyle, background: 'var(--orange)' }}></div>
+                                <div style={{ flex: 1 }}>
+                                    <p style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text)' }}>Entrega de Planificaciones</p>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-sm)' }}>Lunes 18 - Todo el día</p>
+                                </div>
+                            </div>
+                            <div style={itemTarea}>
+                                <div style={{ ...dotStyle, background: 'var(--violet)' }}></div>
+                                <div style={{ flex: 1 }}>
+                                    <p style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--text)' }}>Capacitación Docente</p>
+                                    <p style={{ fontSize: '0.75rem', color: 'var(--text-sm)' }}>Miércoles 20 - 14:00hs (Virtual)</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </Seccion>
+
+                <Seccion
+                    id="servicios"
+                    icono="🏥"
+                    titulo="Servicios especiales"
+                    estado="Comedor, laboratorio e incidencias"
+                >
+                    {/* Servicios Extra (Comedor / Enfermería) */}
+                    <div className="dashboard-card" style={cardStyle}>
+                        <h3 style={cardTitleStyle}>🏥 Servicios Especiales</h3>
+                        <div style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            <button onClick={() => setModal('incidencia')} className="btn" style={{ background: '#fef2f2', color: '#991b1b', border: '1px solid #fee2e2', fontSize: '0.85rem' }}>
+                                🚑 Reportar Incidencia Médica
+                            </button>
+                            <button onClick={() => setModal('comedor')} className="btn" style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #dcfce7', fontSize: '0.85rem' }}>
+                                🍎 Asistencia Comedor
+                            </button>
+                            <button onClick={() => setModal('reserva')} className="btn" style={{ background: '#eff6ff', color: '#1e40af', border: '1px solid #dbeafe', fontSize: '0.85rem' }}>
+                                🧪 Reservar Laboratorio
+                            </button>
+                        </div>
+                    </div>
+                </Seccion>
+            </PanelPorSecciones>
 
             {modal === 'incidencia' && (
                 <div style={modalOverlay} onClick={() => setModal(null)}>
