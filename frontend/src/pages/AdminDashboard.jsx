@@ -5,6 +5,9 @@ import DashboardLayout from '../components/DashboardLayout';
 import ConfirmModal from '../components/ConfirmModal';
 import ReportesListados from '../components/ReportesListados';
 import VinculosCuentas from '../components/VinculosCuentas';
+import CatalogoServicios from '../components/CatalogoServicios';
+import InscripcionesServicios from '../components/InscripcionesServicios';
+import CargoDocente from '../components/CargoDocente';
 
 import { esNombreValido } from '../utils/validators';
 
@@ -387,6 +390,7 @@ const AdminDashboard = () => {
                     method: 'DELETE'
                 });
                 if (response.ok) fetchCursosYAulas();
+                else { const errorData = await response.json().catch(() => ({})); alert(errorData.message || 'No se pudo eliminar el curso.'); }
             } catch (error) { console.error(error); }
         });
     };
@@ -466,6 +470,8 @@ const AdminDashboard = () => {
     };
     const [showPersonalForm, setShowPersonalForm] = useState(false);
     const [showCursoForm, setShowCursoForm] = useState(false);
+    const [editingCurso, setEditingCurso] = useState(null);
+    const [docenteACargo, setDocenteACargo] = useState(null);
     const [showAulaForm, setShowAulaForm] = useState(false);
 
     const handlePersonalSubmit = async (e) => {
@@ -527,6 +533,30 @@ const AdminDashboard = () => {
             if (response.ok) {
                 setShowCursoForm(false);
                 fetchCursosYAulas();
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                alert(errorData.message || 'No se pudo crear el curso.');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    };
+
+    const handleCursoEdit = async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        try {
+            const response = await apiFetch(`${API_URL}/api/academico/cursos/${editingCurso.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ division: form.division.value, cupo: form.cupo.value })
+            });
+            if (response.ok) {
+                setEditingCurso(null);
+                fetchCursosYAulas();
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                alert(errorData.message || 'No se pudo guardar el curso.');
             }
         } catch (error) {
             console.error('Error:', error);
@@ -1143,6 +1173,17 @@ const AdminDashboard = () => {
                                 <button type="submit" className="btn btn-violet">Crear Curso</button>
                             </form>
                         )}
+                        {editingCurso && (
+                            <form key={`curso-${editingCurso.id}`} onSubmit={handleCursoEdit} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', padding: '16px', borderRadius: '12px', marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                <strong style={{ fontSize: '0.85rem', color: 'var(--blue)' }}>Editar curso: {editingCurso.nivel_nombre}</strong>
+                                <input type="text" name="division" placeholder="División" required defaultValue={editingCurso.division} style={inputStyle} />
+                                <input type="number" name="cupo" min="1" step="1" placeholder="Cupo Máximo" required defaultValue={editingCurso.cupo} style={inputStyle} />
+                                <div style={{ display: 'flex', gap: '8px' }}>
+                                    <button type="submit" className="btn btn-violet">Guardar</button>
+                                    <button type="button" onClick={() => setEditingCurso(null)} className="btn btn-hero-outline" style={{ color: 'var(--blue)', borderColor: 'var(--blue)' }}>Cancelar</button>
+                                </div>
+                            </form>
+                        )}
                         {loading ? <p>Cargando...</p> : (
                             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                                 <thead>
@@ -1163,6 +1204,7 @@ const AdminDashboard = () => {
                                                 <td style={tdStyle}><strong>{c.division}</strong></td>
                                                 <td style={tdStyle}>{c.cupo} alumnos</td>
                                                 <td style={tdStyle}>
+                                                    <button onClick={() => setEditingCurso(c)} style={{ background: 'none', border: 'none', color: 'var(--blue)', fontWeight: 700, cursor: 'pointer', marginRight: '10px' }}>Editar</button>
                                                     <button onClick={() => deleteCurso(c.id)} style={{ background: 'none', border: 'none', color: '#dc2626', fontWeight: 700, cursor: 'pointer' }}>Eliminar</button>
                                                 </td>
                                             </tr>
@@ -1284,6 +1326,14 @@ const AdminDashboard = () => {
                                                 <td style={tdStyle}>{p.email}</td>
                                                 <td style={tdStyle}><span style={estadoBadgeStyle(p.estado)}>{p.estado || 'Activo'}</span></td>
                                                 <td style={tdStyle}>
+                                                    {p.tipo === 'Docente' && (
+                                                        <button
+                                                            onClick={() => setDocenteACargo(p)}
+                                                            style={{ background: 'none', border: 'none', color: 'var(--green)', fontWeight: 700, cursor: 'pointer', marginRight: '10px' }}
+                                                        >
+                                                            A cargo
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => { setEditingPersonal(p); setShowPersonalForm(true); }}
                                                         style={{ background: 'none', border: 'none', color: 'var(--blue)', fontWeight: 700, cursor: 'pointer', marginRight: '10px' }}
@@ -1518,6 +1568,14 @@ const AdminDashboard = () => {
                             </div>
                         </div>
                     </div>
+
+                    <CatalogoServicios />
+
+                    <InscripcionesServicios
+                        alumnos={alumnos.filter((a) => (a.estado || 'Activo') === 'Activo')}
+                        titulo="Inscripciones a servicios"
+                        ayuda="Inscribí a cualquier alumno en deportes, transporte o comedor, o dalo de baja. Rigen las mismas reglas que para las familias: máximo 2 deportes por mes, sin horarios superpuestos, un recorrido por mes y con cupo."
+                    />
                 </div>
             )}
 
@@ -1905,6 +1963,8 @@ const AdminDashboard = () => {
                     onConfirm={ejecutarConfirmacion}
                 />
             )}
+
+            {docenteACargo && <CargoDocente docente={docenteACargo} onClose={() => setDocenteACargo(null)} />}
         </DashboardLayout>
     );
 };

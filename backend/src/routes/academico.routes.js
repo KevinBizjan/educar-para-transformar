@@ -15,6 +15,7 @@ router.delete('/aulas/:id', authMiddleware(['admin']), academicoController.delet
 
 router.get('/cursos', academicoController.getCursos);
 router.post('/cursos', authMiddleware(['admin']), academicoController.createCurso);
+router.put('/cursos/:id', authMiddleware(['admin']), academicoController.updateCurso);
 router.delete('/cursos/:id', authMiddleware(['admin']), academicoController.deleteCurso);
 
 router.get('/alumnos', authMiddleware(['admin', 'docente']), academicoController.getAlumnos);

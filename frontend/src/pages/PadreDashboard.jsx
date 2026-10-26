@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import ConfirmModal from '../components/ConfirmModal';
 import FichaHijos from '../components/FichaHijos';
+import InscripcionesServicios from '../components/InscripcionesServicios';
 import { useAuth } from '../context/AuthContext';
 
 /**
@@ -419,6 +420,14 @@ const PadreDashboard = () => {
 
                 <FichaHijos hijos={hijosReales} onCambio={fetchHijosYSaldos} />
 
+                {hijosReales.length > 0 && (
+                    <InscripcionesServicios
+                        alumnos={hijosReales}
+                        titulo="Servicios de mis hijos"
+                        ayuda="Inscribí a tus hijos en deportes, transporte y comedor, o dalos de baja. Cada mes se elige por separado: hasta 2 deportes sin horarios superpuestos y un recorrido de transporte."
+                    />
+                )}
+
                 {/* Calendario de Pagos / Comedor */}
                 <div className="dashboard-card" style={cardStyle}>
                     <h3 style={cardTitleStyle}>💳 Estado de Cuenta</h3>
@@ -486,12 +495,9 @@ const PadreDashboard = () => {
 
                 {/* Comedor y Otros */}
                 <div className="dashboard-card" style={cardStyle}>
-                    <h3 style={cardTitleStyle}>🍎 Servicios Extra</h3>
+                    <h3 style={cardTitleStyle}>🍎 Menú del Comedor</h3>
                     <div style={{ marginTop: '20px' }}>
-                        <div style={infoBox}>
-                            <span style={labelStyle}>Comedor Escolar</span>
-                            <span style={{ ...valueStyle, color: 'var(--blue)' }}>Activo (Menú General)</span>
-                        </div>
+                        <p style={{ fontSize: '0.85rem', color: '#64748b' }}>La inscripción al comedor de cada hijo se gestiona en «Servicios de mis hijos».</p>
                         <button onClick={() => setShowMenu(true)} className="btn btn-green" style={{ width: '100%', marginTop: '16px', fontSize: '0.85rem' }}>Ver Menú Semanal</button>
                     </div>
                 </div>

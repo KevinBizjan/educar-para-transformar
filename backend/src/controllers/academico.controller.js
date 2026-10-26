@@ -622,9 +622,48 @@ exports.deleteAula = async (req, res) => {
     }
 };
 
-exports.deleteCurso = async (req, res) => {
-    const { id } = req.params;
+// Edita la división y el cupo de un curso. El nivel no se cambia (los alumnos y las materias dependen de él).
+// El cupo no puede quedar por debajo de los alumnos que ya tiene el curso.
+exports.updateCurso = async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ message: "Curso inválido" });
+    const division = String(req.body.division === undefined || req.body.division === null ? '' : req.body.division).trim();
+    const cupoNum = Number(req.body.cupo);
+    if (!division) return res.status(400).json({ message: "La división es obligatoria" });
+    if (!Number.isInteger(cupoNum) || cupoNum <= 0) return res.status(400).json({ message: "El cupo debe ser un número entero mayor a 0" });
     try {
+        const curso = (await db.query('SELECT id, nivel_id FROM cursos WHERE id = $1', [id])).rows[0];
+        if (!curso) return res.status(404).json({ message: "Curso no encontrado" });
+        const { n: alumnos } = (await db.query('SELECT COUNT(*)::int AS n FROM alumnos WHERE curso_id = $1', [id])).rows[0];
+        if (cupoNum < alumnos) {
+            return res.status(409).json({ message: `El curso ya tiene ${alumnos} ${alumnos === 1 ? 'alumno' : 'alumnos'}: el cupo no puede ser menor` });
+        }
+        const repetido = await db.query('SELECT 1 FROM cursos WHERE nivel_id = $1 AND LOWER(division) = LOWER($2) AND id <> $3', [curso.nivel_id, division, id]);
+        if (repetido.rowCount > 0) return res.status(409).json({ message: "Ya existe un curso con esa división en este nivel" });
+        await db.query('UPDATE cursos SET division = $1, cupo = $2 WHERE id = $3', [division, cupoNum, id]);
+        res.json({ message: "Curso actualizado" });
+    } catch (err) {
+        if (err.code === '23505') return res.status(409).json({ message: "Ya existe un curso con esa división en este nivel" });
+        res.status(500).json({ message: err.message });
+    }
+};
+
+// No se elimina un curso que todavía tiene alumnos o materias: antes la base lo rechazaba con un error técnico.
+exports.deleteCurso = async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (!id) return res.status(400).json({ message: "Curso inválido" });
+    try {
+        const curso = await db.query('SELECT id FROM cursos WHERE id = $1', [id]);
+        if (!curso.rows[0]) return res.status(404).json({ message: "Curso no encontrado" });
+        const { alumnos, materias } = (await db.query(
+            'SELECT (SELECT COUNT(*)::int FROM alumnos WHERE curso_id = $1) AS alumnos, (SELECT COUNT(*)::int FROM materias WHERE curso_id = $1) AS materias', [id]
+        )).rows[0];
+        if (alumnos > 0 || materias > 0) {
+            const partes = [];
+            if (alumnos > 0) partes.push(`${alumnos} ${alumnos === 1 ? 'alumno' : 'alumnos'}`);
+            if (materias > 0) partes.push(`${materias} ${materias === 1 ? 'materia' : 'materias'}`);
+            return res.status(409).json({ message: `El curso tiene ${partes.join(' y ')}: no se puede eliminar` });
+        }
         await db.query('DELETE FROM cursos WHERE id = $1', [id]);
         res.json({ message: "Curso eliminado" });
     } catch (err) {
