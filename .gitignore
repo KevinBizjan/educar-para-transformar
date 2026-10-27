@@ -1,7 +1,16 @@
 node_modules
 .env
 dist
-.vscode
+# Editor: solo se comparte la configuración del linter
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Cypress: capturas, videos y descargas de las ejecuciones
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+backend/coverage/
 
 # Base de datos SQLite local
 backend/database/*.sqlite

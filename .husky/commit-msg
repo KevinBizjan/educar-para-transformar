@@ -1,0 +1,13 @@
+# Formato del mensaje: tipo(ámbito opcional): descripción (feat, fix, docs, test, refactor, chore, ci, style, perf)
+primera_linea=$(head -1 "$1")
+
+# Los mensajes que Git genera solo (merge, revert, fixup, squash) se aceptan tal cual.
+if echo "$primera_linea" | grep -Eq '^(Merge|Revert|fixup!|squash!) '; then
+  exit 0
+fi
+
+if ! echo "$primera_linea" | grep -Eq '^(feat|fix|docs|test|refactor|chore|ci|style|perf)(\([a-z0-9-]+\))?: .{5,}'; then
+  echo "✖ Mensaje de commit inválido. Usá: tipo(ámbito): descripción"
+  echo "  Ejemplo: feat(inscripciones): máximo de 2 deportes por mes"
+  exit 1
+fi
