@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { API_URL } from '../config';
 import { useAuth } from '../context/AuthContext';
 import SeccionesReporte from './SeccionesReporte';
+import DatosPersonales from './DatosPersonales';
 
 // Portal del padre: ficha de cada hijo (profesores por materia, deportes con horario, transporte y comedor)
 // e inscripción del hijo al cursado cuando todavía no tiene curso.
@@ -87,7 +88,7 @@ export default function FichaHijos({ hijos, onCambio }) {
 
     const cargando = !respuesta || respuesta.clave !== clave;
     const ficha = !cargando ? respuesta.ficha : null;
-    const secciones = ficha ? ficha.secciones.slice(1) : []; // la primera (datos del alumno) ya está en el encabezado
+    const secciones = ficha ? ficha.secciones.slice(1) : []; // la primera (datos del alumno) se muestra aparte, como datos personales
 
     return (
         <div className="dashboard-card" style={{ gridColumn: '1 / -1', background: 'var(--white)', padding: '24px', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-sm)' }}>
@@ -157,7 +158,13 @@ export default function FichaHijos({ hijos, onCambio }) {
 
             {cargando && <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Cargando ficha…</p>}
             {!cargando && respuesta.error && <p role="alert" style={{ fontSize: '0.85rem', color: '#991b1b', fontWeight: 700 }}>{respuesta.error}</p>}
-            {ficha && <SeccionesReporte secciones={secciones} />}
+            {ficha && (
+                <>
+                    <h4 style={{ fontSize: '0.85rem', color: 'var(--blue)', fontWeight: 800, marginBottom: '10px' }}>Datos personales</h4>
+                    <DatosPersonales seccion={ficha.secciones[0]} />
+                    <SeccionesReporte secciones={secciones} />
+                </>
+            )}
         </div>
     );
 }

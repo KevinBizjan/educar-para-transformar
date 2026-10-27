@@ -4,6 +4,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import { useAuth } from '../context/AuthContext';
 import Toast from '../components/Toast';
 import SeccionesReporte from '../components/SeccionesReporte';
+import DatosPersonales from '../components/DatosPersonales';
 import MisDeportes from '../components/MisDeportes';
 
 const AlumnoDashboard = () => {
@@ -74,6 +75,16 @@ const AlumnoDashboard = () => {
     return (
         <DashboardLayout title="Panel del Alumno">
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
+                {/* Mis datos personales (solo lectura): para que el alumno verifique que estén correctos */}
+                {vinculado && (
+                    <div className="dashboard-card" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
+                        <h3 style={cardTitleStyle}>🪪 Mis datos personales</h3>
+                        <div style={{ marginTop: '16px' }}>
+                            <DatosPersonales seccion={perfil.ficha.secciones[0]} />
+                        </div>
+                    </div>
+                )}
+
                 {/* Mi ficha: materias con sus profesores, transporte y comedor */}
                 <div className="dashboard-card" style={{ ...cardStyle, gridColumn: '1 / -1' }}>
                     <h3 style={cardTitleStyle}>📚 Mis materias y profesores</h3>

@@ -4,7 +4,7 @@
 const db = require('../config/database');
 const { rangoDelMes, ReglaError } = require('../utils/inscripciones');
 const { describirHorario } = require('../utils/deportes');
-const { legajoAlumnoSql, legajoDocenteSql, diaCapitalizado, seccion, reporte } = require('../utils/reportes');
+const { legajoAlumnoSql, legajoDocenteSql, diaCapitalizado, fechaCorta, seccion, reporte } = require('../utils/reportes');
 
 const LEGAJO_ALUMNO = legajoAlumnoSql('a.id');
 
@@ -14,6 +14,7 @@ async function fichaAlumno(alumnoId, mes, anio) {
 
     const alumno = (await db.query(
         `SELECT a.id, ${LEGAJO_ALUMNO} AS legajo, a.dni, a.apellido, a.nombre, a.estado,
+                a.fecha_nacimiento, a.domicilio, a.telefono, a.email,
                 n.nombre AS nivel, c.division AS curso, c.id AS curso_id
          FROM alumnos a LEFT JOIN cursos c ON c.id = a.curso_id LEFT JOIN niveles n ON n.id = c.nivel_id
          WHERE a.id = $1`, [alumnoId]
@@ -64,8 +65,11 @@ async function fichaAlumno(alumnoId, mes, anio) {
 
     const c = comedor.rows[0];
     return reporte(`Reporte del alumno: ${alumno.apellido}, ${alumno.nombre}`, [
-        seccion('Datos del alumno', [['legajo', 'Legajo'], ['dni', 'DNI'], ['apellido', 'Apellido'], ['nombre', 'Nombre'], ['nivel', 'Nivel educativo'], ['curso', 'Curso'], ['estado', 'Estado']],
-            [{ legajo: alumno.legajo, dni: alumno.dni, apellido: alumno.apellido, nombre: alumno.nombre, nivel: alumno.nivel || 'Sin curso', curso: alumno.curso || 'Sin curso', estado: alumno.estado }]),
+        seccion('Datos del alumno', [['legajo', 'Legajo'], ['dni', 'DNI'], ['apellido', 'Apellido'], ['nombre', 'Nombre'], ['fecha_nacimiento', 'Fecha de nacimiento'],
+            ['domicilio', 'Domicilio'], ['telefono', 'Teléfono'], ['email', 'Correo electrónico'], ['nivel', 'Nivel educativo'], ['curso', 'Curso'], ['estado', 'Estado']],
+            [{ legajo: alumno.legajo, dni: alumno.dni, apellido: alumno.apellido, nombre: alumno.nombre, fecha_nacimiento: fechaCorta(alumno.fecha_nacimiento),
+               domicilio: alumno.domicilio || '-', telefono: alumno.telefono || '-', email: alumno.email || '-',
+               nivel: alumno.nivel || 'Sin curso', curso: alumno.curso || 'Sin curso', estado: alumno.estado }]),
         seccion('Materias y profesores', [['materia', 'Materia'], ['profesor', 'Profesor']], materias.rows),
         seccion(`Deportes y horarios (${mes}/${anio})`, [['deporte', 'Deporte'], ['grupo', 'Grupo'], ['nivel', 'Nivel'], ['horario', 'Horario'], ['profesor', 'Profesor']],
             deportes.rows.map((d) => ({ ...d, horario: d.dia_semana ? describirHorario(d) : 'Sin horario' }))),

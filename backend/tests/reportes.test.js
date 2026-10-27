@@ -1,13 +1,19 @@
 // Reglas puras de los reportes de la Dirección: legajo, respuesta y exportación a CSV. Sin base de datos.
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { legajo, diaCapitalizado, seccion, reporte, celdaCsv, aCsv, nombreArchivo, CATALOGO } = require('../src/utils/reportes');
+const { fechaCorta, legajo, diaCapitalizado, seccion, reporte, celdaCsv, aCsv, nombreArchivo, CATALOGO } = require('../src/utils/reportes');
 
 describe('Reportes: formatos', () => {
     it('el legajo es el número de registro con prefijo y ceros', () => {
         assert.equal(legajo('A', 12), 'A-00012');
         assert.equal(legajo('D', 5), 'D-00005');
         assert.equal(legajo('A', 123456), 'A-123456');
+    });
+
+    it('las fechas se muestran como DD/MM/AAAA y, si faltan, como guion', () => {
+        assert.equal(fechaCorta('2015-05-05'), '05/05/2015');
+        assert.equal(fechaCorta('2010-12-31T00:00:00.000Z'), '31/12/2010');
+        for (const vacio of [null, undefined, '', 'sin fecha']) assert.equal(fechaCorta(vacio), '-');
     });
 
     it('los días van con mayúscula inicial', () => {

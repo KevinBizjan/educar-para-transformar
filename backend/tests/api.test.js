@@ -1383,6 +1383,7 @@ describe('API Educar para Transformar', { skip }, () => {
             F.aC2 = await alumno('Benitez', F.c2);
             F.aLleno = await alumno('Cabral', F.cLleno);
             F.hijoConCurso = await alumno('Dominguez', F.c1, 'pad1');
+            await db.query(`UPDATE alumnos SET domicilio = 'Calle Falsa 123', telefono = '1122334455', email = 'dominguez@prueba.test' WHERE id = $1`, [F.hijoConCurso]);
             F.hijoA = await alumno('Echeverria', null, 'pad1');
             F.hijoC = await alumno('Fernandez', null, 'pad1');
             F.hijoInactivo = await alumno('Gimenez', null, 'pad1', 'Inactivo');
@@ -1512,6 +1513,12 @@ describe('API Educar para Transformar', { skip }, () => {
             const r = await api('GET', `/api/academico/mis-hijos/${F.hijoConCurso}/ficha`, { token: tk('pad1') });
             assert.equal(r.status, 200);
             assert.ok(titulos(r)[0] === 'Datos del alumno');
+            const datos = r.data.secciones[0];
+            assert.deepEqual(datos.columnas.map(c => c.clave), ['legajo', 'dni', 'apellido', 'nombre', 'fecha_nacimiento', 'domicilio', 'telefono', 'email', 'nivel', 'curso', 'estado']);
+            assert.equal(datos.filas[0].fecha_nacimiento, '05/05/2015', 'la fecha se muestra como DD/MM/AAAA');
+            assert.equal(datos.filas[0].domicilio, 'Calle Falsa 123');
+            assert.equal(datos.filas[0].telefono, '1122334455');
+            assert.equal(datos.filas[0].email, 'dominguez@prueba.test');
             assert.ok(titulos(r).includes('Materias y profesores'));
             assert.ok(titulos(r).some(t => t.startsWith('Deportes y horarios')));
             assert.ok(titulos(r).includes('Transporte'));
@@ -1698,6 +1705,9 @@ describe('API Educar para Transformar', { skip }, () => {
                 assert.equal(r.data.vinculado, true);
                 assert.equal(r.data.alumno_id, F.a1);
                 assert.equal(r.data.ficha.secciones[0].filas[0].apellido, 'Aguilar');
+                const propios = r.data.ficha.secciones[0].filas[0];
+                assert.match(propios.fecha_nacimiento, /^\d{2}\/\d{2}\/\d{4}$/, 've su fecha de nacimiento');
+                for (const campo of ['domicilio', 'telefono', 'email']) assert.ok(campo in propios, `ve su ${campo} (o "-" si falta)`);
                 assert.ok(r.data.ficha.secciones.some(s => s.titulo.startsWith('Deportes y horarios')));
                 const libre = await api('GET', '/api/academico/mi-ficha', { token: tk('alu3') });
                 assert.deepEqual(libre.data, { vinculado: false });
