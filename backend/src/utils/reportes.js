@@ -68,4 +68,7 @@ const CATALOGO = [
     { id: 'alumnos-por-recorrido', titulo: 'Alumnos por recorrido de transporte', descripcion: 'Recorrido, chofer, alumno, curso y punto de encuentro.', filtros: [{ clave: 'ruta_id', tipo: 'ruta' }, { clave: 'periodo', tipo: 'periodo' }] },
 ];
 
-module.exports = { legajo, legajoSql, legajoAlumnoSql, legajoDocenteSql, legajoPersonalSql, diaCapitalizado, seccion, reporte, celdaCsv, aCsv, nombreArchivo, CATALOGO };
+// Las fechas DATE llegan como 'AAAA-MM-DD' (ver config/database.js); en pantalla se leen como DD/MM/AAAA.
+const fechaCorta = (fecha) => (/^\d{4}-\d{2}-\d{2}/.test(fecha || '') ? fecha.slice(0, 10).split('-').reverse().join('/') : '-');
+
+module.exports = { fechaCorta, legajo, legajoSql, legajoAlumnoSql, legajoDocenteSql, legajoPersonalSql, diaCapitalizado, seccion, reporte, celdaCsv, aCsv, nombreArchivo, CATALOGO };
