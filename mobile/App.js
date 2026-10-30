@@ -9,13 +9,14 @@ import InicioScreen from './src/screens/InicioScreen.js';
 import CambiarPasswordScreen from './src/screens/CambiarPasswordScreen.js';
 import SinAccesoScreen from './src/screens/SinAccesoScreen.js';
 import MisHijosScreen from './src/screens/MisHijosScreen.js';
+import CuotasScreen from './src/screens/CuotasScreen.js';
 import BarraInferior from './src/screens/BarraInferior.js';
 import { colores } from './src/screens/estilos.js';
 
 // Redirección según el estado de la sesión y el rol del usuario.
 function Raiz() {
   const { usuario, cargando } = useAuth();
-  const [seccion, setSeccion] = useState('hijos'); // 'hijos' | 'cuenta'
+  const [seccion, setSeccion] = useState('hijos'); // 'hijos' | 'cuotas' | 'cuenta'
   const [verCambioPassword, setVerCambioPassword] = useState(false);
 
   if (cargando) {
@@ -33,9 +34,9 @@ function Raiz() {
   return (
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1 }}>
-        {seccion === 'hijos'
-          ? <MisHijosScreen />
-          : <InicioScreen alCambiarPassword={() => setVerCambioPassword(true)} />}
+        {seccion === 'hijos' && <MisHijosScreen />}
+        {seccion === 'cuotas' && <CuotasScreen />}
+        {seccion === 'cuenta' && <InicioScreen alCambiarPassword={() => setVerCambioPassword(true)} />}
       </View>
       <BarraInferior activa={seccion} alElegir={setSeccion} />
     </View>

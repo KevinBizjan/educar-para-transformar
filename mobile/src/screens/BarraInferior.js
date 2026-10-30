@@ -1,9 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { colores } from './estilos.js';
 
-// Navegación simple entre las dos secciones de la app del padre/tutor.
+// Navegación simple entre las secciones de la app del padre/tutor.
 const SECCIONES = [
     { id: 'hijos', texto: 'Mis hijos' },
+    { id: 'cuotas', texto: 'Cuotas' },
     { id: 'cuenta', texto: 'Mi cuenta' },
 ];
 
