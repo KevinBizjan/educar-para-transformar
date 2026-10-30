@@ -24,7 +24,7 @@ export default function InicioScreen({ alCambiarPassword }) {
                 <Text style={estilos.texto}>Usuario: {usuario.username}</Text>
 
                 <Text style={[estilos.etiqueta, { marginTop: 20 }]}>Próximamente</Text>
-                <Text style={estilos.texto}>Pagar una factura y subir comprobantes de transferencia.</Text>
+                <Text style={estilos.texto}>Subir los comprobantes de tus transferencias.</Text>
 
                 <Pressable style={estilos.botonSecundario} onPress={alCambiarPassword}>
                     <Text style={estilos.botonTextoSecundario}>Cambiar contraseña</Text>
