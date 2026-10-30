@@ -29,7 +29,7 @@ En el emulador de Android la computadora es `http://10.0.2.2:3000`. Después de 
 ## Comprobar sin celular
 
 ```bash
-npm test                   # 27 pruebas: cliente de la API, sesión, validaciones y "Mis hijos" (sin red)
+npm test                   # 40 pruebas: cliente de la API, sesión, validaciones, "Mis hijos" y "Cuotas" (sin red)
 npm run verificar:conexion # llama al backend real: GET /api/health
 ```
 
@@ -40,7 +40,8 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 | `App.js` | Raíz de la app: redirige según la sesión y el rol |
 | `src/auth/` | Sesión: login, renovación y cierre (`sesion.js`), contexto de React y almacenamiento seguro del token |
 | `src/familia/` | Lógica de "Mis hijos": carga del resumen, caché en memoria, formato de montos y meses |
-| `src/screens/` | Pantallas: inicio de sesión, "Mis hijos", "Mi cuenta", cambio de contraseña y acceso no disponible |
+| `src/cuentas/` | Lógica de "Cuotas": carga por filtro, caché en memoria y textos de cada cuota y pago |
+| `src/screens/` | Pantallas: inicio de sesión, "Mis hijos", "Cuotas", "Mi cuenta", cambio de contraseña y acceso no disponible |
 | `src/utils/validators.js` | Reglas de contraseña (las mismas del backend y la web) |
 | `src/config.js` | URL de la API y claves públicas de Supabase (variables `EXPO_PUBLIC_*`) |
 | `src/api/client.js` | Cliente de la API: token JWT, errores en español, tiempo de espera |
@@ -61,6 +62,13 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 - Se puede navegar entre meses con las flechas; cada mes muestra sus propios servicios.
 - **Una sola llamada** a la API (`GET /api/inscripciones/resumen-familia`) trae todo, sin importar cuántos hijos haya. Lo último que se vio queda en un caché en memoria: la pantalla lo muestra al instante y lo actualiza en segundo plano. Se puede actualizar a mano deslizando hacia abajo.
 - Al cerrar sesión (o si la sesión vence) el caché se borra: no quedan datos de la familia en memoria.
+
+## Cuotas (HU6)
+
+- Pestaña **Cuotas** con tres filtros: **Pendientes**, **Pagadas** e **Historial** de pagos. Las cuotas se agrupan por hijo, con su importe, vencimiento y estado (Pendiente, Vencida, En revisión o Pagada); si el pago es parcial se ve cuánto se abonó y cuánto resta.
+- Sin deuda aparece el mensaje «¡Estás al día!» y el total pendiente muestra «Cuenta al día».
+- Una sola llamada a la API (`GET /api/cuentas/cuotas?estado=pendientes|pagadas|historial`, solo para el padre y solo de sus hijos). Los importes se calculan en centavos enteros y las fechas se toman en hora de Argentina.
+- Solo se listan las cuotas ya emitidas (hasta el mes actual) del nivel de cada hijo. Un pago sin cuota asociada figura en el historial, pero no descuenta de ninguna cuota.
 
 ## Notas
 
