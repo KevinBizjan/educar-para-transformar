@@ -5,6 +5,7 @@ import { colores } from './estilos.js';
 const SECCIONES = [
     { id: 'hijos', texto: 'Mis hijos' },
     { id: 'cuotas', texto: 'Cuotas' },
+    { id: 'pagar', texto: 'Pagar' },
     { id: 'cuenta', texto: 'Mi cuenta' },
 ];
 

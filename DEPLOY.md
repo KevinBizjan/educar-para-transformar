@@ -33,6 +33,7 @@ Los precios y límites cambian: confirmalos en las páginas oficiales de cada pl
 3. **Apply**. `JWT_SECRET` lo genera Render solo.
 4. Cuando termine el primer deploy, abre la URL `https://<nombre>.onrender.com`.
 5. Cambia `SEED_ON_BOOT` a `false` en **Environment** (ver sección 4).
+6. (Opcional) En **Environment** agrega `PAGO_TITULAR`, `PAGO_BANCO`, `PAGO_CBU` y `PAGO_ALIAS`: son los datos para transferir que la app muestra al padre cuando genera una factura. Si no están, la app le indica que los consulte en la institución.
 
 ### Opción 2: a mano, sin Blueprint
 1. **New → Web Service** → elige el repositorio.
