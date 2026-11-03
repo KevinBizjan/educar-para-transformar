@@ -14,7 +14,7 @@ const etiquetaStyle = { display: 'block', fontSize: '0.7rem', fontWeight: 800, c
 // Qué lista de opciones usa cada tipo de filtro y cómo se muestra cada opción.
 const ETIQUETA_FILTRO = {
     alumno: 'Alumno', docente: 'Docente', nivel: 'Nivel educativo', curso: 'Curso',
-    materia: 'Materia', deporte: 'Deporte', ruta: 'Recorrido',
+    materia: 'Materia', deporte: 'Deporte', ruta: 'Recorrido', estado_pago: 'Estado del pago',
 };
 
 export default function ReportesListados() {
@@ -25,6 +25,7 @@ export default function ReportesListados() {
     const [filtros, setFiltros] = useState({});
     const [mes, setMes] = useState(() => new Date().getMonth() + 1);
     const [anio, setAnio] = useState(() => new Date().getFullYear());
+    const [mesPago, setMesPago] = useState(''); // en los reportes de pagos el mes es opcional: sin elegirlo, se ve todo el año escolar
     const [resultado, setResultado] = useState(null);
     const [cargando, setCargando] = useState(false);
     const [error, setError] = useState('');
@@ -74,7 +75,9 @@ export default function ReportesListados() {
         const params = new URLSearchParams();
         for (const f of reporte.filtros) {
             if (f.tipo === 'periodo') { params.set('mes', mes); params.set('anio', anio); }
-            else if (filtros[f.clave] && f.clave !== 'alumno_id' && f.clave !== 'docente_id') params.set(f.clave, filtros[f.clave]);
+            else if (f.tipo === 'periodo_opcional') { params.set('anio', anio); if (mesPago) params.set('mes', mesPago); }
+            // En los reportes "Por alumno" y "Por docente" la persona va en la dirección; en los demás es un filtro más
+            else if (filtros[f.clave] && !(reporte.id === 'alumno' && f.clave === 'alumno_id') && !(reporte.id === 'docente' && f.clave === 'docente_id')) params.set(f.clave, filtros[f.clave]);
         }
         if (formato) params.set('formato', formato);
         const ruta = reporte.id === 'alumno' ? `alumno/${filtros.alumno_id}` : reporte.id === 'docente' ? `docente/${filtros.docente_id}` : reporte.id;
@@ -139,6 +142,7 @@ export default function ReportesListados() {
                 .map((m) => ({ valor: m.id, texto: m.nombre }));
             case 'deporte': return opciones.deportes.map((d) => ({ valor: d.id, texto: d.nombre }));
             case 'ruta': return opciones.rutas.map((r) => ({ valor: r.id, texto: r.nombre }));
+            case 'estado_pago': return [{ valor: 'Completo', texto: 'Completo' }, { valor: 'Incompleto', texto: 'Incompleto' }];
             default: return [];
         }
     };
@@ -162,7 +166,21 @@ export default function ReportesListados() {
                             </select>
                         </div>
 
-                        {reporte.filtros.map((f) => f.tipo === 'periodo' ? (
+                        {reporte.filtros.map((f) => f.tipo === 'periodo_opcional' ? (
+                            <div key={f.clave} style={{ display: 'flex', gap: '8px' }}>
+                                <div>
+                                    <label htmlFor="rep-anio-escolar" style={etiquetaStyle}>Año escolar</label>
+                                    <input id="rep-anio-escolar" type="number" min="2020" max="2100" value={anio} onChange={(e) => setAnio(Number(e.target.value))} style={{ ...campoStyle, minWidth: '90px', width: '100px' }} />
+                                </div>
+                                <div>
+                                    <label htmlFor="rep-mes-pago" style={etiquetaStyle}>Mes</label>
+                                    <select id="rep-mes-pago" value={mesPago} onChange={(e) => setMesPago(e.target.value)} style={{ ...campoStyle, minWidth: '150px' }}>
+                                        <option value="">Todo el año</option>
+                                        {MESES.map((nombre, i) => <option key={nombre} value={i + 1}>{nombre}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        ) : f.tipo === 'periodo' ? (
                             <div key={f.clave} style={{ display: 'flex', gap: '8px' }}>
                                 <div>
                                     <label htmlFor="rep-mes" style={etiquetaStyle}>Mes</label>

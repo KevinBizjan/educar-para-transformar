@@ -231,3 +231,6 @@ exports.alumnosPorRecorrido = manejar('alumnos-por-recorrido', async (req) => {
     return reporte(`Listado de alumnos por recorrido de transporte (${p.mes}/${p.anio})`,
         [seccion('Alumnos', [['recorrido', 'Recorrido'], ['chofer', 'Chofer'], ['alumno', 'Alumno'], ['nivel', 'Nivel educativo'], ['curso', 'Curso'], ['punto', 'Punto de encuentro'], ['origen', 'Origen']], r.rows)], { ...f, ...p });
 });
+
+// Para los reportes de pagos (HU11 y HU12), que usan el mismo envoltorio, los mismos filtros y la misma descarga en CSV
+exports.herramientas = { manejar, leerFiltros, leerPeriodo, Peticion };

@@ -141,7 +141,8 @@ describe('API de historial y revisión (HU9)', { skip }, () => {
     }
     const login = async (username, password) => (await api('POST', '/api/auth/login', { body: { username, password } })).data.token;
     let seq = 0;
-    const dni = () => String(Date.now()).slice(-7) + String(++seq).padStart(2, '0');
+    // DNI al azar: los archivos de prueba corren a la vez en procesos distintos y un contador por hora puede chocar
+    const dni = () => 'T' + require('node:crypto').randomBytes(5).toString('hex') + String(++seq);
 
     // Arma una factura de la familia con una cuota y el servicio, le adjunta un comprobante (queda "En revisión") y la devuelve
     const facturaEnRevision = async () => {
