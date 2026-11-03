@@ -4,6 +4,7 @@
 //  - GET /api/correos: auditoría de cada correo (solo administrador).
 const crypto = require('crypto');
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { ReglaError } = require('../utils/inscripciones');
 const { esFecha } = require('../utils/facturas');
 const { TIPOS } = require('../utils/correos');
@@ -11,7 +12,7 @@ const job = require('../services/correosJob'); // se llama como job.ejecutarTare
 
 const responderError = (res, err) => {
     if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
-    res.status(500).json({ message: err.message });
+    responderErrorInterno(res, err);
 };
 
 // Comparación del secreto en tiempo constante (no revela cuántos caracteres coinciden)

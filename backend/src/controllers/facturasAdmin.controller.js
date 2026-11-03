@@ -3,8 +3,9 @@
 // Al aprobar una factura, cada cuota que incluye queda registrada como pago (atado a la factura) y descuenta del saldo
 // de la familia, igual que un pago cargado a mano: así los reportes de ingresos y el estado de cuenta la reflejan.
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { ReglaError } = require('../utils/inscripciones');
-const { ESTADOS, validarRevision, validarRango, fechaLocalSql, aCentavosFactura } = require('../utils/facturas');
+const { ESTADOS, validarRevision, validarRango, fechaLocalSql, aCentavosFactura, cobraDeMas } = require('../utils/facturas');
 const { AlmacenError, obtenerAlmacen } = require('../services/almacenamiento');
 
 const SEGUNDOS_ENLACE = 600;
@@ -12,7 +13,7 @@ const SEGUNDOS_ENLACE = 600;
 const responderError = (res, err) => {
     if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
     if (err instanceof AlmacenError) return res.status(502).json({ message: 'No se pudo completar la operación con el almacenamiento. Reintentá en unos segundos.' });
-    res.status(500).json({ message: err.message });
+    responderErrorInterno(res, err);
 };
 
 // GET /api/facturas?estado=En revision&desde=AAAA-MM-DD&hasta=AAAA-MM-DD
@@ -92,7 +93,14 @@ exports.cambiarEstado = async (req, res) => {
         if (revision.error) throw new ReglaError(revision.codigo, revision.error);
 
         if (revision.estado === 'Pagada') {
-            const cuotas = (await cliente.query('SELECT alumno_id, cuota_id, monto FROM factura_items WHERE factura_id = $1 AND cuota_id IS NOT NULL ORDER BY id', [id])).rows;
+            const cuotas = (await cliente.query(
+                `SELECT fi.alumno_id, fi.cuota_id, fi.monto, fi.descripcion, cc.monto AS cuota_monto,
+                        COALESCE((SELECT SUM(p.monto_pagado) FROM pagos p WHERE p.alumno_id = fi.alumno_id AND p.cuota_id = fi.cuota_id), 0) AS pagado
+                 FROM factura_items fi JOIN cuotas_config cc ON cc.id = fi.cuota_id
+                 WHERE fi.factura_id = $1 AND fi.cuota_id IS NOT NULL ORDER BY fi.id`, [id])).rows;
+            // Si la Dirección cobró en mano una cuota después de emitida la factura, aprobarla la cobraría dos veces
+            const repetida = cuotas.find(cobraDeMas);
+            if (repetida) throw new ReglaError(409, `${repetida.descripcion}: la cuota ya recibió pagos y esta factura la cobraría de más. Rechazala indicando el motivo y la familia genera otra con lo que falta.`);
             const porAlumno = new Map();
             for (const c of cuotas) {
                 await cliente.query(

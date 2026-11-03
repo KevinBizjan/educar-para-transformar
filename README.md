@@ -157,15 +157,22 @@ Lo que garantiza la base de datos y no solo la pantalla (así dos pedidos simult
 3. **GitHub Actions** (`.github/workflows/ci.yml`) corre en cada PR y en cada push a `main`:
    * *Frontend:* `npm ci` → ESLint → build de Vite → guarda `frontend/dist` como artefacto (7 días).
    * *Backend:* levanta un PostgreSQL descartable, aplica el esquema, siembra (`node seed.js`) y corre `npm test`.
+   * *E2E (Cypress):* con su propia base descartable, arranca la app completa (el backend sirve el `frontend/dist` que compiló el job anterior) y corre las pruebas de extremo a extremo en un navegador real.
 4. Si la CI está en rojo, el PR no debería mergearse. Al mergear, Render redeploya solo (ver [DEPLOY.md](DEPLOY.md)).
 
 La CI no usa secretos: la base y la clave JWT se generan al azar en cada ejecución y nunca se toca Supabase.
 
 ## 🧪 Pruebas automáticas
 
-El backend tiene 41 pruebas (`node:test`): validadores, patrones de diseño y la API completa
-(autenticación y JWT, RBAC, cupos, notas 1-10, asistencia, finanzas con PDF, servicios,
-comunicados, Mi Perfil y horarios sin superposición).
+**Backend (`node:test`, más de 340 pruebas):** validadores, patrones de diseño, reglas de dinero (centavos, cuotas, facturas),
+comprobantes, revisión, correos, reportes y la API completa (autenticación y JWT, RBAC, cupos, notas, asistencia,
+finanzas con PDF, servicios, inscripciones, comunicados y horarios sin superposición).
+
+- `tests/flujo-completo.test.js` (HU13) recorre **inscripción → factura → comprobante → aprobación → reporte** por la API real,
+  con un Storage falso, y comprueba que los números cierran al centavo y que no se pierde ni se duplica nada. También cubre
+  casos de borde entre módulos: borrar algo con historial de pagos, cobrar en mano una cuota ya facturada, pasar a inactivo a un
+  alumno con una factura en revisión y tocar la factura de otra familia.
+- `tests/errores.test.js`: ningún error inesperado le muestra al usuario el texto interno de la base.
 
 Las pruebas de API corren **solo contra un PostgreSQL local** (si `DATABASE_URL` no apunta a
 `localhost` se saltean solas), para no escribir datos de prueba en Supabase.
@@ -176,6 +183,21 @@ cd backend
 export DATABASE_URL=postgresql://postgres:postgres@localhost:55432/postgres DATABASE_SSL=false JWT_SECRET=test
 node seed.js && npm test
 ```
+
+**App móvil:** `cd mobile && node --test __tests__/*.test.mjs` (lógica de cuotas, pago, comprobantes e historial).
+
+**E2E con Cypress** (`cypress/e2e`): acceso por rol, inscripción a deportes y el recorrido de la Dirección con las facturas y los
+reportes de pagos. Necesitan la app corriendo con el frontend compilado y la base sembrada:
+
+```bash
+npm run build --prefix frontend
+# en el backend, con las mismas variables de arriba:
+PORT=3917 npm start --prefix backend
+# en otra terminal, desde la raíz del repositorio:
+npx cypress run
+```
+
+Adjuntar un comprobante necesita Supabase Storage, que la CI no tiene: ese tramo se prueba en el backend con el almacenamiento falso.
 
 ## 🚀 Despliegue
 

@@ -5,6 +5,7 @@
 //    temporal firmado (5 minutos) y lo abre. El token solo sirve para ese PDF y no es un token de sesión.
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { ReglaError } = require('../utils/inscripciones');
 const { validarRango, resumenFacturas, fechaLocalSql } = require('../utils/facturas');
 const { dibujarFactura, dibujarHistorial } = require('../services/facturasPdf');
@@ -15,7 +16,7 @@ const secretoPdf = () => `${process.env.JWT_SECRET}:pdf`;
 
 const responderError = (res, err) => {
     if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
-    res.status(500).json({ message: err.message });
+    responderErrorInterno(res, err);
 };
 
 // Los timestamps de la base están en UTC y el rango se entiende en hora de Argentina

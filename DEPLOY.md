@@ -81,6 +81,15 @@ Railway detecta el `package.json` y el `railway.json` de la **raíz** y ejecuta 
 | `NODE_VERSION` | `22.22.0` (solo Render; ya viene en el Blueprint) | No |
 | `DATABASE_SSL` | No definir (SSL activo por defecto, Supabase lo exige) | No |
 | `PORT` | **No definir**: la plataforma lo inyecta sola | No |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Dirección del proyecto y clave **secreta** de Supabase: sin ellas no se pueden adjuntar comprobantes (HU8) | Para comprobantes |
+| `SUPABASE_BUCKET` | Bucket privado de los comprobantes (por defecto `comprobantes`) | No |
+| `RESEND_API_KEY` | Clave de resend.com para los correos automáticos (HU10) | Para correos |
+| `MAIL_FROM` | Remitente; con el de prueba solo se entrega a la cuenta dueña de Resend | No |
+| `MAIL_REDIRIGIR_A` | Modo prueba o demostración: todos los correos van a esta casilla | No |
+| `CRON_SECRET` | Texto largo al azar; el mismo valor va como secreto `CRON_SECRET` en GitHub | Para correos |
+| `PAGO_TITULAR`, `PAGO_BANCO`, `PAGO_CBU`, `PAGO_ALIAS` | Datos para transferir que la app le muestra al padre | No |
+| `FERIADOS` | Feriados `AAAA-MM-DD` separados por coma, para el último día hábil | No |
+| `SCHEMA_FORZAR` | `true` reaplica el esquema aunque no haya cambiado (ver sección 3) | No |
 
 **`DATABASE_URL` (Supabase):**
 1. En Supabase pulsa **Connect** → **Transaction pooler** (puerto **6543**).
@@ -105,8 +114,10 @@ Los datos sobreviven a cada deploy y reinicio mientras `DATABASE_URL` apunte al
 mismo proyecto de Supabase.
 
 El esquema (`backend/src/config/schema.sql`) se aplica solo al arrancar el
-servidor (usa `CREATE TABLE IF NOT EXISTS`, así que es seguro en cada deploy).
-También se puede aplicar a mano con `node backend/migrate.js`.
+servidor y **únicamente si el archivo cambió** desde el último arranque (su huella se
+guarda en la tabla `schema_version` y se aplica con un bloqueo, de a un proceso por vez).
+Solo agrega tablas, columnas e índices (`IF NOT EXISTS`), así que es seguro en cada deploy.
+`SCHEMA_FORZAR=true` lo reaplica igual. También se puede aplicar a mano con `node backend/migrate.js`.
 
 `SEED_ON_BOOT=true` carga los usuarios y datos demo; como usa
 `ON CONFLICT ... DO NOTHING` y chequeos previos, no pisa ni duplica lo que ya haya.
@@ -158,6 +169,43 @@ Con un deploy sano, los logs muestran: `Servidor corriendo en el puerto <N>`
 | El health check falla y reinicia en bucle | La base no responde | Revisar `DATABASE_URL` y que el proyecto esté activo |
 | La web abre en blanco pero `/api/health` funciona | El build del frontend no se generó | Revisar el log de **Build** y que la raíz del servicio esté vacía |
 | La primera visita tarda mucho (Render) | El servicio estaba dormido | Es normal: espera cerca de 1 minuto y recarga |
+
+## 8. Code freeze y despliegue final (HU13)
+Orden para publicar la versión final. Los responsables son Kevin y Valentina; cada paso lo marca quien lo hace.
+
+**Antes del freeze**
+- [ ] Todas las historias de usuario están mergeadas y `main` tiene la CI en verde (lint, build, pruebas del backend y pruebas E2E de Cypress).
+- [ ] `docs/PROTOCOLO_IA.md` tiene la bitácora al día, incluida la auditoría de la HU13.
+
+**Freeze**
+- [ ] Desde este momento `main` solo recibe correcciones de errores del despliegue (PR chico, revisado por la otra persona). Nada de funciones nuevas.
+- [ ] (Opcional, lo decide el equipo) Proteger `main` en GitHub → Settings → Branches: exigir PR y CI en verde.
+
+**Configuración en Render** (Environment; sección 2)
+- [ ] `DATABASE_URL` del Transaction pooler y `JWT_SECRET` largo; `SEED_ON_BOOT=false` (y cambiadas las contraseñas de los usuarios demo, sección 4).
+- [ ] `SUPABASE_URL` y `SUPABASE_SERVICE_KEY`, con el bucket privado `comprobantes` creado.
+- [ ] `RESEND_API_KEY` y `CRON_SECRET`; `MAIL_REDIRIGIR_A` mientras se prueba. Para escribirle a las familias hay que verificar un dominio en Resend y definir `MAIL_FROM`; después se borra `MAIL_REDIRIGIR_A`.
+- [ ] En GitHub → Secrets: `APP_URL` y `CRON_SECRET` (el mismo valor que en Render).
+- [ ] El proyecto de Supabase está activo (sección 5).
+
+**Publicar y verificar**
+- [ ] En Render: **Manual Deploy → Deploy latest commit** de `main`.
+- [ ] Verificación de la sección 6 (`/api/health`, página inicial, ruta interna, login de administrador).
+- [ ] Desde `backend/`, con el `.env` apuntando a la misma base: `npm run verificar:storage` y `npm run verificar:correo -- tu@correo.com`.
+- [ ] GitHub → Actions → **Correos automáticos** → *Run workflow*: debe responder HTTP 200.
+
+**Recorrido de aceptación** (el mismo que cubre la prueba `backend/tests/flujo-completo.test.js`, pero contra el servicio publicado)
+1. El administrador da de alta una familia con un hijo y le crea la cuota del mes.
+2. En la app móvil, el padre inicia sesión, ve a su hijo y se inscribe a un servicio.
+3. Genera la factura de la cuota y el servicio, y adjunta un comprobante: la factura queda **En revisión**.
+4. En el panel web → 🧾 Facturas, el administrador abre el comprobante y la da por pagada.
+5. En la app, el padre ve la cuota como pagada y la factura en su historial, y descarga el PDF.
+6. En el panel web → Reportes, «Pagos por alumno» muestra al alumno como **Completo** y «Ingresos por mes» suma ese pago.
+
+**Si algo sale mal**: en Render, **Rollback** al deploy anterior. Es seguro porque el esquema solo agrega; las tablas y columnas nuevas quedan sin usar. Los datos viven en Supabase y no se tocan.
+
+**Después**
+- [ ] Anotar la fecha y el commit publicados. Con el visto bueno del equipo, crear la etiqueta de versión (`git tag v1.0.0` y `git push origin v1.0.0`).
 
 ## Usuarios de prueba (creados por el seed)
 - admin / admin123

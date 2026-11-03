@@ -3,6 +3,7 @@
 //  - Padre: la ficha de cada hijo (profesores por materia, deportes, transporte y comedor) e inscripción
 //    del hijo al cursado (curso con vacantes).
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { leerPeriodo, ReglaError } = require('../utils/inscripciones');
 const { vacantes } = require('../utils/vinculos');
 const { fichaAlumno, fichaDocente } = require('../services/fichas.service');
@@ -10,7 +11,7 @@ const { docenteDeCuenta, alumnoDeCuenta } = require('../services/vinculos.servic
 
 const responderError = (res, err) => {
     if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
-    res.status(500).json({ message: err.message });
+    responderErrorInterno(res, err);
 };
 
 // Un padre solo accede a los alumnos de los que es tutor.

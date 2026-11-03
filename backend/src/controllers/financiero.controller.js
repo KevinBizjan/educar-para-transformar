@@ -1,8 +1,10 @@
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const PagosFacade = require('../patterns/pagosFacade');
 
 const { NOMBRE_REGEX, esNombreValido, esDniValido, esEmailValido } = require('../utils/validators');
 const { legajoPersonalSql } = require('../utils/reportes');
+const { responderErrorDeBorrado } = require('../utils/borrado');
 
 const ESTADOS_PERSONAL = ['Activo', 'Inactivo', 'Licencia'];
 
@@ -12,7 +14,7 @@ exports.getPersonal = async (req, res) => {
         const result = await db.query(`SELECT *, ${legajoPersonalSql('tipo', 'id')} AS legajo FROM personal`);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -47,7 +49,7 @@ exports.createPersonal = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -72,7 +74,7 @@ exports.updatePersonal = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Personal no encontrado" });
         res.json({ message: "Legajo de personal actualizado correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -82,7 +84,7 @@ exports.deletePersonal = async (req, res) => {
         await db.query('DELETE FROM personal WHERE id = $1', [id]);
         res.json({ message: "Personal eliminado" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'a la persona');
     }
 };
 
@@ -97,7 +99,7 @@ exports.getCuotasConfig = async (req, res) => {
         const result = await db.query(query);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -113,7 +115,7 @@ exports.createCuotaConfig = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -123,7 +125,7 @@ exports.deleteCuotaConfig = async (req, res) => {
         await db.query('DELETE FROM cuotas_config WHERE id = $1', [id]);
         res.json({ message: "Configuración de cuota eliminada" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'la cuota');
     }
 };
 
@@ -158,7 +160,7 @@ exports.getSaldoAlumno = async (req, res) => {
         const result = await db.query('SELECT * FROM saldos_alumnos WHERE alumno_id = $1', [alumno_id]);
         res.json(result.rows[0] || { saldo_pendiente: 0 });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -181,7 +183,7 @@ exports.getPagos = async (req, res) => {
         const result = await db.query(query, params);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -198,6 +200,6 @@ exports.getDeudores = async (req, res) => {
         const result = await db.query(query);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
