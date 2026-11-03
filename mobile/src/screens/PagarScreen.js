@@ -6,6 +6,7 @@ import {
     claveItem, alternarItem, itemsElegidos, totalElegido, seleccionarTodo, itemsParaEnviar, agruparItemsPorHijo,
     etiquetaFactura, colorFactura, lineasDatosBancarios, cargarPagables, cargarFacturas, crearFactura,
 } from '../cuentas/pago.js';
+import ComprobantesFactura from './ComprobantesFactura.js';
 import { estilos, colores } from './estilos.js';
 
 // "Pagar": el padre elige cuotas y servicios, ve el total exacto y genera una factura con su referencia para pagar
@@ -132,7 +133,8 @@ export default function PagarScreen() {
                 <>
                     <Text style={local.seccion}>Mis facturas</Text>
                     {facturas.map((f) => (
-                        <View key={f.id} style={[estilos.tarjeta, local.factura]}>
+                        <View key={f.id} style={[estilos.tarjeta, local.facturaCaja]}>
+                          <View style={local.factura}>
                             <View style={{ flex: 1 }}>
                                 <Text style={local.referencia}>{f.referencia}</Text>
                                 <Text style={local.detalle}>{formatearMomento(f.emitida_en)} · {f.items.length} {f.items.length === 1 ? 'ítem' : 'ítems'}</Text>
@@ -141,6 +143,8 @@ export default function PagarScreen() {
                                 </View>
                             </View>
                             <Text style={local.monto}>{formatearMonto(f.total)}</Text>
+                          </View>
+                          <ComprobantesFactura factura={f} alCambiar={() => cargar(true)} />
                         </View>
                     ))}
                 </>
@@ -173,7 +177,7 @@ function FacturaGenerada({ factura, alVolver }) {
     return (
         <ScrollView contentContainerStyle={local.contenido}>
             <Text style={estilos.titulo}>Factura generada</Text>
-            <Text style={[estilos.subtitulo, { marginBottom: 12 }]}>Hacé la transferencia por el total e indicá esta referencia.</Text>
+            <Text style={[estilos.subtitulo, { marginBottom: 12 }]}>Hacé la transferencia por el total e indicá esta referencia. Después adjuntá el comprobante en «Mis facturas».</Text>
 
             <View style={[estilos.tarjeta, { marginBottom: 14 }]}>
                 <Text style={estilos.etiqueta}>Referencia de pago</Text>
@@ -221,7 +225,8 @@ const local = StyleSheet.create({
     monto: { fontSize: 16, fontWeight: '800', color: colores.texto, marginLeft: 10 },
     total: { fontSize: 28, fontWeight: '800', color: colores.azul },
     seccion: { fontSize: 18, fontWeight: '800', color: colores.texto, marginBottom: 10 },
-    factura: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
+    facturaCaja: { marginBottom: 10 },
+    factura: { flexDirection: 'row', alignItems: 'flex-start' },
     referencia: { fontSize: 15, fontWeight: '800', color: colores.texto },
     referenciaGrande: { fontSize: 22, fontWeight: '800', color: colores.texto, letterSpacing: 1, marginBottom: 6 },
     insignia: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, marginTop: 8 },

@@ -29,7 +29,7 @@ En el emulador de Android la computadora es `http://10.0.2.2:3000`. Después de 
 ## Comprobar sin celular
 
 ```bash
-npm test                   # 53 pruebas: cliente de la API, sesión, validaciones, "Mis hijos", "Cuotas" y "Pagar" (sin red)
+npm test                   # 63 pruebas: cliente de la API, sesión, validaciones, "Mis hijos", "Cuotas", "Pagar" y comprobantes (sin red)
 npm run verificar:conexion # llama al backend real: GET /api/health
 ```
 
@@ -40,7 +40,7 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 | `App.js` | Raíz de la app: redirige según la sesión y el rol |
 | `src/auth/` | Sesión: login, renovación y cierre (`sesion.js`), contexto de React y almacenamiento seguro del token |
 | `src/familia/` | Lógica de "Mis hijos": carga del resumen, caché en memoria, formato de montos y meses |
-| `src/cuentas/` | Lógica de "Cuotas" (carga por filtro, caché y textos) y de "Pagar" (selección, total exacto y factura) |
+| `src/cuentas/` | Lógica de "Cuotas" (carga por filtro, caché y textos), de "Pagar" (selección, total exacto y factura) y de los comprobantes (validación y subida) |
 | `src/screens/` | Pantallas: inicio de sesión, "Mis hijos", "Cuotas", "Pagar", "Mi cuenta", cambio de contraseña y acceso no disponible |
 | `src/utils/validators.js` | Reglas de contraseña (las mismas del backend y la web) |
 | `src/config.js` | URL de la API y claves públicas de Supabase (variables `EXPO_PUBLIC_*`) |
@@ -77,7 +77,14 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 - Lo ya abonado no se ofrece, y lo que ya está en una factura abierta (pendiente o en revisión) se muestra bloqueado con su referencia: no se puede facturar dos veces, ni siquiera con dos pedidos simultáneos. Si una factura se rechaza, sus ítems vuelven a estar disponibles.
 - API: `GET /api/cuentas/pagables`, `POST /api/cuentas/facturas`, `GET /api/cuentas/facturas` y `GET /api/cuentas/facturas/:id` (solo el padre y solo lo suyo).
 - Los datos para transferir salen de las variables `PAGO_TITULAR`, `PAGO_BANCO`, `PAGO_CBU` y `PAGO_ALIAS` del servidor (ver `DEPLOY.md`); sin ellas, la app indica que se consulten en la institución.
-- **Pendiente:** adjuntar los comprobantes de la transferencia (HU8) y que la factura pase a «En revisión» y «Pagada».
+## Comprobantes de pago (HU8)
+
+- En «Mis facturas», cada factura abierta (pendiente o en revisión) permite **adjuntar uno o más comprobantes** (hasta 10, de hasta 5 MB cada uno) elegidos del teléfono: **PNG, JPG o PDF**. Al subir el primero, la factura pasa a **En revisión**. Se pueden ver (enlace temporal) y quitar mientras la factura siga abierta; sin comprobantes vuelve a «Pendiente de pago».
+- La app avisa enseguida si el tipo o el tamaño no sirven, pero **el servidor revisa el contenido de verdad**: rechaza un archivo cuyo formato no coincide con el que declara y los archivos dañados o cortados (a un PNG le falta el final, a un PDF su `%%EOF`).
+- **La app no habla con Storage**: manda el archivo al backend (`POST /api/cuentas/facturas/:id/comprobantes`), que lo guarda en un bucket **privado** de Supabase con la clave secreta del servidor. Así esa clave nunca está en el teléfono y cada archivo queda asociado a una factura. Si falla el guardado en la base, el archivo se retira de Storage.
+- Configuración del servidor: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` y, si hace falta, `SUPABASE_BUCKET` (ver `DEPLOY.md`). `npm run verificar:storage` (en `backend`) comprueba el bucket de verdad: sube, descarga con enlace firmado y borra una imagen de prueba.
+- El cliente `src/lib/supabase.js` y las variables `EXPO_PUBLIC_SUPABASE_*` de la HU2 ya no se usan para esto.
+- **Pendiente:** que un administrador revise los comprobantes y pase la factura a «Pagada» o «Rechazada» (hoy solo se puede por la base de datos).
 
 ## Notas
 

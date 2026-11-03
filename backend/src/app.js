@@ -11,6 +11,9 @@ const app = express();
 // Permitir todos los orígenes para desarrollo local. Content-Disposition se expone para que el front pueda
 // leer el nombre de archivo de las descargas (reportes en CSV) también entre orígenes distintos.
 app.use(cors({ exposedHeaders: ['Content-Disposition'] }));
+// El archivo de un comprobante viaja en base64 (hasta 5 MB de archivo = unos 7 MB de texto). Ese límite mayor se
+// aplica solo a esa ruta; el resto de la API sigue con el límite normal.
+app.use('/api/cuentas/facturas/:id/comprobantes', express.json({ limit: '8mb' }));
 app.use(express.json());
 app.use(morgan('dev'));
 
