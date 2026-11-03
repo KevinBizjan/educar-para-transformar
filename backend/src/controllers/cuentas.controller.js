@@ -54,7 +54,8 @@ async function serviciosDe(hijos, hoy, consulta = db) {
     const filas = (await consulta.query(
         `SELECT i.id AS inscripcion_id, i.alumno_id, a.apellido || ', ' || a.nombre AS alumno, s.tipo, s.nombre, s.precio_mensual AS monto, i.mes, i.anio,
                 (SELECT f.referencia FROM factura_items fi JOIN facturas f ON f.id = fi.factura_id
-                 WHERE fi.inscripcion_id = i.id AND f.estado IN ('Pendiente', 'En revision') LIMIT 1) AS en_factura
+                 WHERE fi.inscripcion_id = i.id AND f.estado IN ('Pendiente', 'En revision') LIMIT 1) AS en_factura,
+                EXISTS (SELECT 1 FROM factura_items fi JOIN facturas f ON f.id = fi.factura_id WHERE fi.inscripcion_id = i.id AND f.estado = 'En revision') AS en_revision
          FROM inscripciones_servicio i
          JOIN servicios s ON s.id = i.servicio_id
          JOIN alumnos a ON a.id = i.alumno_id
@@ -76,7 +77,7 @@ async function itemsPagables(hijos, hoy, consulta = db) {
         })),
         ...servicios.map((s) => ({
             tipo: 'servicio', alumno_id: s.alumno_id, inscripcion_id: s.inscripcion_id, alumno: s.alumno, mes: s.mes, anio: s.anio,
-            descripcion: descripcionServicio(s), monto: Number(s.monto), vencimiento: null, estado: 'Pendiente', en_factura: s.en_factura,
+            descripcion: descripcionServicio(s), monto: Number(s.monto), vencimiento: null, estado: s.en_revision ? 'En revision' : 'Pendiente', en_factura: s.en_factura,
         })),
     ].map((item) => ({ ...item, disponible: !item.en_factura }));
 }
@@ -141,25 +142,23 @@ const armarFactura = (factura, items) => ({
 const ITEMS_DE_FACTURA = `SELECT fi.id, fi.factura_id, fi.alumno_id, fi.cuota_id, fi.inscripcion_id, fi.descripcion, fi.monto
                           FROM factura_items fi WHERE fi.factura_id = ANY($1) ORDER BY fi.id`;
 
-// POST /api/cuentas/facturas  { items: [{ tipo: 'cuota', alumno_id, cuota_id } | { tipo: 'servicio', inscripcion_id }] }
-// Arma la factura consolidada. Los montos salen siempre de la base, nunca de lo que manda la app.
-exports.crearFactura = async (req, res) => {
-    const seleccion = validarSeleccion(req.body && req.body.items);
-    if (seleccion.error) return res.status(400).json({ message: seleccion.error });
-
+// Emite la factura consolidada de un padre con los ítems elegidos, en una transacción. Los montos salen siempre de la
+// base. La usan el pedido de la app y el envío automático de fin de mes. Lanza ReglaError si algo no corresponde.
+// Devuelve { factura, items } con los ítems tal como quedaron guardados.
+async function emitirFactura(padreId, seleccion) {
     let cliente;
     try {
         cliente = await db.getClient();
         await cliente.query('BEGIN');
         // Una factura a la vez por padre: dos pedidos simultáneos no pueden facturar el mismo ítem. Se usa un bloqueo
         // de la transacción (no de una fila) porque el ítem se lee antes de insertar y la fila del usuario ya se comparte por la clave foránea.
-        await cliente.query('SELECT pg_advisory_xact_lock($1, $2)', [BLOQUEO_FACTURAS, req.user.id]);
+        await cliente.query('SELECT pg_advisory_xact_lock($1, $2)', [BLOQUEO_FACTURAS, padreId]);
 
-        const hijos = await hijosDelPadre(req.user.id, null);
+        const hijos = await hijosDelPadre(padreId, null);
         const hoy = hoyEnArgentina();
         const disponibles = new Map((await itemsPagables(hijos, hoy, cliente)).map((i) => [claveItem(i), i]));
 
-        const elegidos = seleccion.items.map((pedido) => {
+        const elegidos = seleccion.map((pedido) => {
             const item = disponibles.get(claveItem(pedido));
             if (!item) throw new ReglaError(409, 'Un ítem no existe, ya está abonado o no es de tus hijos');
             if (!item.disponible) throw new ReglaError(409, `"${item.descripcion}" ya está en la factura ${item.en_factura}`);
@@ -175,7 +174,7 @@ exports.crearFactura = async (req, res) => {
                 factura = (await cliente.query(
                     `INSERT INTO facturas (tutor_id, referencia, total, estado) VALUES ($1, $2, $3, 'Pendiente')
                      RETURNING id, referencia, total, estado, emitida_en`,
-                    [req.user.id, referenciaFactura(hoy, azarReferencia()), total]
+                    [padreId, referenciaFactura(hoy, azarReferencia()), total]
                 )).rows[0];
             } catch (err) {
                 // 23505: la referencia (que se genera al azar) ya existía; se prueba con otra
@@ -191,14 +190,33 @@ exports.crearFactura = async (req, res) => {
         }
         const guardados = (await cliente.query(ITEMS_DE_FACTURA, [[factura.id]])).rows;
         await cliente.query('COMMIT');
-        res.status(201).json({ ...armarFactura(factura, guardados), pago: { metodo: 'Transferencia bancaria', datos: datosBancarios(), nota: NOTA_PAGO } });
+        return { factura, items: guardados };
     } catch (err) {
         if (cliente) await cliente.query('ROLLBACK').catch(() => {});
-        responderError(res, err);
+        throw err;
     } finally {
         if (cliente) cliente.release();
     }
+}
+
+// POST /api/cuentas/facturas  { items: [{ tipo: 'cuota', alumno_id, cuota_id } | { tipo: 'servicio', inscripcion_id }] }
+// Arma la factura consolidada. Los montos salen siempre de la base, nunca de lo que manda la app.
+exports.crearFactura = async (req, res) => {
+    const seleccion = validarSeleccion(req.body && req.body.items);
+    if (seleccion.error) return res.status(400).json({ message: seleccion.error });
+    try {
+        const { factura, items } = await emitirFactura(req.user.id, seleccion.items);
+        res.status(201).json({ ...armarFactura(factura, items), pago: { metodo: 'Transferencia bancaria', datos: datosBancarios(), nota: NOTA_PAGO } });
+    } catch (err) {
+        responderError(res, err);
+    }
 };
+
+// Lo usa el envío automático de correos (HU10)
+exports.emitirFactura = emitirFactura;
+exports.itemsPagables = itemsPagables;
+exports.hijosDelPadre = hijosDelPadre;
+exports.ITEMS_DE_FACTURA = ITEMS_DE_FACTURA;
 
 // GET /api/cuentas/facturas: las facturas del padre, de la más nueva a la más vieja
 exports.listarFacturas = async (req, res) => {
