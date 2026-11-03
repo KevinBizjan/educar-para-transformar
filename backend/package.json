@@ -7,12 +7,14 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "seed": "node seed.js",
-    "test": "node --test tests/validators.test.js tests/patrones.test.js tests/modelo-movil.test.js tests/inscripciones.test.js tests/deportes.test.js tests/reportes.test.js tests/vinculos.test.js tests/servicios.test.js tests/cuotas.test.js tests/facturas.test.js tests/api.test.js"
+    "verificar:storage": "node scripts/verificar-storage.js",
+    "test": "node --test tests/validators.test.js tests/patrones.test.js tests/modelo-movil.test.js tests/inscripciones.test.js tests/deportes.test.js tests/reportes.test.js tests/vinculos.test.js tests/servicios.test.js tests/cuotas.test.js tests/facturas.test.js tests/comprobantes.test.js tests/api.test.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

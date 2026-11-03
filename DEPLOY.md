@@ -34,6 +34,7 @@ Los precios y límites cambian: confirmalos en las páginas oficiales de cada pl
 4. Cuando termine el primer deploy, abre la URL `https://<nombre>.onrender.com`.
 5. Cambia `SEED_ON_BOOT` a `false` en **Environment** (ver sección 4).
 6. (Opcional) En **Environment** agrega `PAGO_TITULAR`, `PAGO_BANCO`, `PAGO_CBU` y `PAGO_ALIAS`: son los datos para transferir que la app muestra al padre cuando genera una factura. Si no están, la app le indica que los consulte en la institución.
+7. (Comprobantes de pago) Crea en Supabase → Storage un bucket **privado** llamado `comprobantes` y agrega en **Environment** `SUPABASE_URL` y `SUPABASE_SERVICE_KEY` (la clave **secreta** del proyecto, en Project Settings → API Keys). Sin ellas, adjuntar un comprobante responde que el almacenamiento no está configurado. El mismo par va en `backend/.env` para probarlo en tu equipo con `npm run verificar:storage` (dentro de `backend`).
 
 ### Opción 2: a mano, sin Blueprint
 1. **New → Web Service** → elige el repositorio.
