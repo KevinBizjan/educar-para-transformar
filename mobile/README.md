@@ -29,7 +29,7 @@ En el emulador de Android la computadora es `http://10.0.2.2:3000`. Después de 
 ## Comprobar sin celular
 
 ```bash
-npm test                   # 40 pruebas: cliente de la API, sesión, validaciones, "Mis hijos" y "Cuotas" (sin red)
+npm test                   # 53 pruebas: cliente de la API, sesión, validaciones, "Mis hijos", "Cuotas" y "Pagar" (sin red)
 npm run verificar:conexion # llama al backend real: GET /api/health
 ```
 
@@ -40,8 +40,8 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 | `App.js` | Raíz de la app: redirige según la sesión y el rol |
 | `src/auth/` | Sesión: login, renovación y cierre (`sesion.js`), contexto de React y almacenamiento seguro del token |
 | `src/familia/` | Lógica de "Mis hijos": carga del resumen, caché en memoria, formato de montos y meses |
-| `src/cuentas/` | Lógica de "Cuotas": carga por filtro, caché en memoria y textos de cada cuota y pago |
-| `src/screens/` | Pantallas: inicio de sesión, "Mis hijos", "Cuotas", "Mi cuenta", cambio de contraseña y acceso no disponible |
+| `src/cuentas/` | Lógica de "Cuotas" (carga por filtro, caché y textos) y de "Pagar" (selección, total exacto y factura) |
+| `src/screens/` | Pantallas: inicio de sesión, "Mis hijos", "Cuotas", "Pagar", "Mi cuenta", cambio de contraseña y acceso no disponible |
 | `src/utils/validators.js` | Reglas de contraseña (las mismas del backend y la web) |
 | `src/config.js` | URL de la API y claves públicas de Supabase (variables `EXPO_PUBLIC_*`) |
 | `src/api/client.js` | Cliente de la API: token JWT, errores en español, tiempo de espera |
@@ -69,6 +69,15 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 - Sin deuda aparece el mensaje «¡Estás al día!» y el total pendiente muestra «Cuenta al día».
 - Una sola llamada a la API (`GET /api/cuentas/cuotas?estado=pendientes|pagadas|historial`, solo para el padre y solo de sus hijos). Los importes se calculan en centavos enteros y las fechas se toman en hora de Argentina.
 - Solo se listan las cuotas ya emitidas (hasta el mes actual) del nivel de cada hijo. Un pago sin cuota asociada figura en el historial, pero no descuenta de ninguna cuota.
+
+## Pagar (HU7)
+
+- Pestaña **Pagar**: el padre elige cuotas y servicios (deporte, transporte, comedor) de sus hijos, ve el **total exacto** y genera una **factura consolidada** con su referencia (`EPT-AAAAMMDD-XXXXXX`) para pagar **por transferencia bancaria**. No hay pagos en efectivo.
+- Los montos los calcula siempre el servidor: la app solo le dice qué ítems se eligieron. De una cuota con pago parcial se cobra lo que resta.
+- Lo ya abonado no se ofrece, y lo que ya está en una factura abierta (pendiente o en revisión) se muestra bloqueado con su referencia: no se puede facturar dos veces, ni siquiera con dos pedidos simultáneos. Si una factura se rechaza, sus ítems vuelven a estar disponibles.
+- API: `GET /api/cuentas/pagables`, `POST /api/cuentas/facturas`, `GET /api/cuentas/facturas` y `GET /api/cuentas/facturas/:id` (solo el padre y solo lo suyo).
+- Los datos para transferir salen de las variables `PAGO_TITULAR`, `PAGO_BANCO`, `PAGO_CBU` y `PAGO_ALIAS` del servidor (ver `DEPLOY.md`); sin ellas, la app indica que se consulten en la institución.
+- **Pendiente:** adjuntar los comprobantes de la transferencia (HU8) y que la factura pase a «En revisión» y «Pagada».
 
 ## Notas
 

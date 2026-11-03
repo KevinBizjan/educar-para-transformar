@@ -37,6 +37,7 @@ const armarCuota = (fila, hoy = hoyEnArgentina()) => {
         pagado: deCentavos(pagado),
         saldo: deCentavos(monto - pagado),
         vencimiento: comoFecha(fila.vencimiento),
+        en_factura: fila.en_factura || null, // referencia de la factura abierta que ya la incluye (HU7)
         estado: estadoCuota({ monto: deCentavos(monto), pagado: deCentavos(pagado), vencimiento: fila.vencimiento, enRevision: fila.en_revision }, hoy),
     };
 };
