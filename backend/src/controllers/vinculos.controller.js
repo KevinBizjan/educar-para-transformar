@@ -3,6 +3,7 @@
 // Una cuenta con rol docente o alumno se asocia a su legajo (personal / alumnos) para que cada persona vea
 // solo lo suyo. El vínculo es opcional y uno a uno: una cuenta, una persona.
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { leerUserId, validarRolDeCuenta } = require('../utils/vinculos');
 const { legajoAlumnoSql, legajoDocenteSql } = require('../utils/reportes');
 
@@ -34,7 +35,7 @@ exports.listar = async (req, res) => {
         ]);
         res.json({ alumnos: alumnos.rows, docentes: docentes.rows, cuentas_libres: cuentas.rows });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -66,7 +67,7 @@ const vincular = (tipo) => async (req, res) => {
     } catch (err) {
         // El índice único cubre la carrera entre dos pedidos simultáneos con la misma cuenta.
         if (err.code === '23505') return res.status(409).json({ message: 'Esa cuenta ya está vinculada a otro legajo.' });
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 

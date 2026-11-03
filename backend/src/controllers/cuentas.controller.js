@@ -1,6 +1,7 @@
 // Cuenta corriente de la familia en la app móvil: cuotas e historial de pagos (HU6) y facturas para pagar por
 // transferencia (HU7). Solo el padre/tutor, y solo de sus hijos.
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { ReglaError } = require('../utils/inscripciones');
 const { FILTROS, hoyEnArgentina, armarCuota, filtrarCuotas, sumar, totalPendiente, aCentavos } = require('../utils/cuotas');
 const {
@@ -13,7 +14,7 @@ const BLOQUEO_FACTURAS = 7001;
 
 const responderError = (res, err) => {
     if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
-    res.status(500).json({ message: err.message });
+    responderErrorInterno(res, err);
 };
 
 // Ids de los hijos del padre; si se pide uno en particular, tiene que ser suyo.

@@ -2,7 +2,7 @@
 // La parte de la API solo corre si DATABASE_URL apunta a localhost (crea cuotas, inscripciones y facturas de prueba).
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { validarSeleccion, totalFactura, descripcionCuota, descripcionServicio, referenciaFactura, azarReferencia, datosBancarios, claveItem, MAX_ITEMS } = require('../src/utils/facturas');
+const { validarSeleccion, totalFactura, descripcionCuota, descripcionServicio, referenciaFactura, azarReferencia, datosBancarios, claveItem, cobraDeMas, MAX_ITEMS } = require('../src/utils/facturas');
 
 describe('Factura: reglas puras', () => {
     it('acepta una selección válida y la normaliza (se descarta cualquier monto enviado)', () => {
@@ -26,6 +26,14 @@ describe('Factura: reglas puras', () => {
     it('la clave distingue las cuotas por hijo y los servicios por inscripción', () => {
         assert.notEqual(claveItem({ tipo: 'cuota', alumno_id: 1, cuota_id: 2 }), claveItem({ tipo: 'cuota', alumno_id: 2, cuota_id: 2 }));
         assert.equal(claveItem({ tipo: 'servicio', inscripcion_id: 9 }), 'servicio:9');
+    });
+
+    it('una cuota se cobra de más solo si lo pagado más lo facturado se pasa de su monto, medido en centavos', () => {
+        assert.equal(cobraDeMas({ cuota_monto: 15000, pagado: 0, monto: 15000 }), false, 'cobrar la cuota entera sin pagos previos es lo normal');
+        assert.equal(cobraDeMas({ cuota_monto: 15000, pagado: 15000, monto: 15000 }), true, 'ya estaba paga');
+        assert.equal(cobraDeMas({ cuota_monto: 12345.67, pagado: '345.67', monto: '12000.00' }), false, 'pago parcial y factura por lo que resta (llegan como texto de la base)');
+        assert.equal(cobraDeMas({ cuota_monto: 12345.67, pagado: 345.68, monto: 12000 }), true, 'un centavo de más ya es cobrar de más');
+        assert.equal(cobraDeMas({ cuota_monto: 0.3, pagado: 0.1, monto: 0.2 }), false, 'con decimales binarios 0,1 + 0,2 sigue siendo 0,3');
     });
 
     it('el total se suma en centavos exactos', () => {

@@ -1,9 +1,11 @@
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 
 const { NOMBRE_REGEX, esNombreValido, esEmailValido } = require('../utils/validators');
 const { docenteDeCuenta } = require('../services/vinculos.service');
 const { leerPeriodo, periodoDeFecha } = require('../utils/inscripciones');
 const { legajoAlumnoSql } = require('../utils/reportes');
+const { responderErrorDeBorrado } = require('../utils/borrado');
 const { actividadPorId, inscriptosDeDeporte, estaInscriptoEnDeporte } = require('../services/actividades.service');
 
 const ESTADOS_ALUMNO = ['Activo', 'Inactivo', 'Egresado'];
@@ -14,7 +16,7 @@ exports.getNiveles = async (req, res) => {
         const result = await db.query('SELECT * FROM niveles');
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -26,7 +28,7 @@ exports.createNivel = async (req, res) => {
         const result = await db.query('INSERT INTO niveles (nombre) VALUES ($1) RETURNING id', [nombre]);
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -40,7 +42,7 @@ exports.updateNivel = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Nivel no encontrado" });
         res.json({ message: "Nivel actualizado correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -56,7 +58,7 @@ exports.deleteNivel = async (req, res) => {
         if (deleteResult.rowCount === 0) return res.status(404).json({ message: "Nivel no encontrado" });
         res.json({ message: "Nivel eliminado correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'el nivel');
     }
 };
 
@@ -66,7 +68,7 @@ exports.getAulas = async (req, res) => {
         const result = await db.query('SELECT * FROM aulas');
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -83,7 +85,7 @@ exports.createAula = async (req, res) => {
         const result = await db.query('INSERT INTO aulas (nombre, capacidad) VALUES ($1, $2) RETURNING id', [nombre, capacidadNum]);
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -98,7 +100,7 @@ exports.getCursos = async (req, res) => {
         const result = await db.query(query);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -122,7 +124,7 @@ exports.createCurso = async (req, res) => {
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
         if (err.code === '23505') return res.status(409).json({ message: "Ya existe un curso con esa división en este nivel" });
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -151,7 +153,7 @@ exports.getAlumnos = async (req, res) => {
         `, params);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -197,7 +199,7 @@ exports.createAlumno = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -236,7 +238,7 @@ exports.updateAlumno = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Alumno no encontrado" });
         res.json({ message: "Alumno actualizado correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -265,7 +267,7 @@ exports.getMaterias = async (req, res) => {
         `, params);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -287,7 +289,7 @@ exports.createMateria = async (req, res) => {
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
         if (err.code === '23505') return res.status(409).json({ message: "Esa materia ya existe en este curso" });
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -304,7 +306,7 @@ exports.updateMateria = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Materia no encontrada" });
         res.json({ message: "Materia actualizada correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -315,7 +317,7 @@ exports.deleteMateria = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Materia no encontrada" });
         res.json({ message: "Materia eliminada correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'la materia');
     }
 };
 
@@ -346,7 +348,7 @@ exports.getActividades = async (req, res) => {
         // El alumno ve acá solo Cultura e Idioma: sus deportes los elige por grupo en el catálogo de deportes.
         res.json(req.user.rol === 'alumno' ? result.rows.filter((a) => a.tipo !== 'Deporte') : result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -368,7 +370,7 @@ exports.createActividad = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -392,7 +394,7 @@ exports.updateActividad = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Actividad no encontrada" });
         res.json({ message: "Actividad actualizada correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -403,7 +405,7 @@ exports.deleteActividad = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Actividad no encontrada" });
         res.json({ message: "Actividad eliminada correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'la actividad');
     }
 };
 
@@ -441,7 +443,7 @@ exports.inscribirActividad = async (req, res) => {
         res.status(201).json({ message: "Inscripción realizada con éxito", id: insertResult.rows[0].id });
     } catch (err) {
         if (err.code === '23505') return res.status(400).json({ message: "Ya estás inscripto en esta actividad" });
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -459,7 +461,7 @@ exports.getMisInscripciones = async (req, res) => {
         const result = await db.query(query, [req.user.id]);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -474,7 +476,7 @@ exports.desinscribirActividad = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "No estabas inscripto en esta actividad" });
         res.json({ message: "Inscripción cancelada" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -491,7 +493,7 @@ exports.getMisHijos = async (req, res) => {
         const result = await db.query(query, [req.user.id]);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -541,7 +543,7 @@ exports.getResumenHijo = async (req, res) => {
 
         res.json(resumen);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -560,7 +562,7 @@ exports.getAlumnosDisponibles = async (req, res) => {
         const result = await db.query(query);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -580,7 +582,7 @@ exports.vincularHijo = async (req, res) => {
         }
         res.json({ message: "Alumno vinculado correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -597,7 +599,7 @@ exports.desvincularHijo = async (req, res) => {
         }
         res.json({ message: "Alumno desvinculado correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -608,7 +610,7 @@ exports.deleteAlumno = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Alumno no encontrado" });
         res.json({ message: "Alumno eliminado correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'el alumno');
     }
 };
 
@@ -618,7 +620,7 @@ exports.deleteAula = async (req, res) => {
         await db.query('DELETE FROM aulas WHERE id = $1', [id]);
         res.json({ message: "Aula eliminada" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'el aula');
     }
 };
 
@@ -644,7 +646,7 @@ exports.updateCurso = async (req, res) => {
         res.json({ message: "Curso actualizado" });
     } catch (err) {
         if (err.code === '23505') return res.status(409).json({ message: "Ya existe un curso con esa división en este nivel" });
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -667,7 +669,7 @@ exports.deleteCurso = async (req, res) => {
         await db.query('DELETE FROM cursos WHERE id = $1', [id]);
         res.json({ message: "Curso eliminado" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -760,7 +762,7 @@ exports.registrarAsistencia = async (req, res) => {
         await client.query('ROLLBACK');
         if (err.code === '23503') return res.status(400).json({ message: "Alguno de los alumnos o la materia no existe" });
         if (err.code === '23505') return res.status(409).json({ message: yaCargada });
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     } finally {
         client.release();
     }
@@ -802,7 +804,7 @@ exports.cargarCalificacion = async (req, res) => {
             res.status(201).json({ id: insertResult.rows[0].id });
         }
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -819,7 +821,7 @@ exports.getCalificacionesMateria = async (req, res) => {
         const result = await db.query(query, [materia_id]);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -876,7 +878,7 @@ exports.getDocentes = async (req, res) => {
         );
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -902,7 +904,7 @@ exports.getHorarios = async (req, res) => {
         const result = await db.query(query);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -959,7 +961,7 @@ exports.createHorario = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -970,7 +972,7 @@ exports.deleteHorario = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: "Horario no encontrado" });
         res.json({ message: "Horario eliminado correctamente" });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'el horario');
     }
 };
 
@@ -1007,7 +1009,7 @@ exports.getInscriptosActividad = async (req, res) => {
         const result = await db.query(query, [actividadId]);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -1045,7 +1047,7 @@ exports.registrarAsistenciaActividad = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -1107,6 +1109,6 @@ exports.cargarCalificacionActividad = async (req, res) => {
             res.status(201).json({ id: insertResult.rows[0].id });
         }
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };

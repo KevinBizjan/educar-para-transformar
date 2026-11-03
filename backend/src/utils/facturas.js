@@ -111,4 +111,8 @@ const resumenFacturas = (facturas) => {
 const fechaLocalSql = (columna) => `((${columna} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`;
 const aCentavosFactura = aCentavos;
 
-module.exports = { fechaLocalSql, aCentavosFactura, ESTADOS, TRANSICIONES, MAX_MOTIVO, validarRevision, esFecha, validarRango, resumenFacturas, MAX_ITEMS, ESTADOS_ABIERTOS, NOTA_PAGO, claveItem, validarSeleccion, totalFactura, descripcionCuota, descripcionServicio, azarReferencia, referenciaFactura, datosBancarios };
+// Una cuota se puede cobrar de más si, entre lo que ya se pagó (por ejemplo, en mano en secretaría después de
+// emitida la factura) y lo que esta factura cobra, se pasa del monto de la cuota. Compara en centavos.
+const cobraDeMas = ({ cuota_monto, pagado, monto }) => aCentavosFactura(pagado) + aCentavosFactura(monto) > aCentavosFactura(cuota_monto);
+
+module.exports = { fechaLocalSql, aCentavosFactura, cobraDeMas, ESTADOS, TRANSICIONES, MAX_MOTIVO, validarRevision, esFecha, validarRango, resumenFacturas, MAX_ITEMS, ESTADOS_ABIERTOS, NOTA_PAGO, claveItem, validarSeleccion, totalFactura, descripcionCuota, descripcionServicio, azarReferencia, referenciaFactura, datosBancarios };

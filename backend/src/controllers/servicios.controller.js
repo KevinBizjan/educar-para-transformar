@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { MAX_RECORRIDOS } = require('../utils/deportes');
 const { MAX_PUNTO_ENCUENTRO, MAX_OBSERVACIONES, leerId, hayLugarEnRuta, leerConsumioMenu } = require('../utils/servicios');
 const { leerPeriodo, ReglaError } = require('../utils/inscripciones');
@@ -35,14 +36,14 @@ exports.registrarAsistenciaComedor = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
 // --- TRANSPORTE ---
 const responderError = (res, err) => {
     if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
-    res.status(500).json({ message: err.message });
+    responderErrorInterno(res, err);
 };
 
 exports.getRutasTransporte = async (req, res) => {
@@ -57,7 +58,7 @@ exports.getRutasTransporte = async (req, res) => {
             ocupados: r.ocupados
         })));
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -85,7 +86,7 @@ exports.createRutaTransporte = async (req, res) => {
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
         if (err.code === '23505') return res.status(409).json({ message: 'Ya existe un recorrido con ese nombre' });
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -161,7 +162,7 @@ exports.getAsignacionesTransporte = async (req, res) => {
         );
         res.json(r.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -173,7 +174,7 @@ exports.quitarAsignacionTransporte = async (req, res) => {
         if (r.rowCount === 0) return res.status(404).json({ message: 'Asignación no encontrada' });
         res.json({ message: 'Asignación quitada' });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -197,7 +198,7 @@ exports.deleteRutaTransporte = async (req, res) => {
         await db.query('DELETE FROM transporte_rutas WHERE id = $1', [id]);
         res.json({ message: 'Ruta eliminada' });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -207,7 +208,7 @@ exports.getInstalaciones = async (req, res) => {
         const result = await db.query('SELECT * FROM instalaciones');
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -244,7 +245,7 @@ exports.reservarInstalacion = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -263,6 +264,6 @@ exports.registrarIncidenciaEnfermeria = async (req, res) => {
         );
         res.status(201).json({ id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
