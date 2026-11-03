@@ -55,4 +55,60 @@ const datosBancarios = (env = process.env) => {
 
 const NOTA_PAGO = 'El pago se realiza solo por transferencia bancaria. No se aceptan pagos en efectivo.';
 
-module.exports = { MAX_ITEMS, ESTADOS_ABIERTOS, NOTA_PAGO, claveItem, validarSeleccion, totalFactura, descripcionCuota, descripcionServicio, azarReferencia, referenciaFactura, datosBancarios };
+// --- Revisión de la Dirección (HU9) ---
+const ESTADOS = ['Pendiente', 'En revision', 'Pagada', 'Rechazada'];
+// De qué estado a cuál puede pasar una factura. Pagada y Rechazada son finales; una factura sin comprobantes
+// (Pendiente) no se puede dar por pagada, solo anular.
+const TRANSICIONES = { 'En revision': ['Pagada', 'Rechazada'], Pendiente: ['Rechazada'] };
+const MAX_MOTIVO = 300;
+
+// Valida el pedido de la Dirección { estado, motivo } contra el estado actual. Devuelve { estado, motivo } o { error, codigo }.
+const validarRevision = (pedido, actual) => {
+    const hacia = pedido && pedido.estado;
+    if (hacia !== 'Pagada' && hacia !== 'Rechazada') return { codigo: 400, error: 'El nuevo estado tiene que ser Pagada o Rechazada' };
+    if (!(TRANSICIONES[actual] || []).includes(hacia)) {
+        return { codigo: 409, error: `Una factura ${actual === 'Pagada' || actual === 'Rechazada' ? actual.toLowerCase() : 'en estado ' + actual} no puede pasar a ${hacia}` };
+    }
+    if (hacia === 'Pagada') return { estado: hacia, motivo: null };
+    const motivo = typeof pedido.motivo === 'string' ? pedido.motivo.trim() : '';
+    if (!motivo) return { codigo: 400, error: 'Indicá el motivo del rechazo para que la familia sepa qué corregir' };
+    if (motivo.length > MAX_MOTIVO) return { codigo: 400, error: `El motivo no puede superar los ${MAX_MOTIVO} caracteres` };
+    return { estado: hacia, motivo };
+};
+
+// Fecha AAAA-MM-DD que exista de verdad (no el 31 de febrero)
+const esFecha = (texto) => {
+    if (typeof texto !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(texto)) return false;
+    const d = new Date(`${texto}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === texto;
+};
+
+// Rango de fechas de un historial: ambos extremos son opcionales, pero si vienen tienen que ser fechas y estar en orden.
+const validarRango = ({ desde, hasta } = {}) => {
+    for (const [nombre, valor] of [['desde', desde], ['hasta', hasta]]) {
+        if (valor !== undefined && valor !== '' && !esFecha(valor)) return { error: `La fecha "${nombre}" no es válida (usá AAAA-MM-DD)` };
+    }
+    const d = desde || null;
+    const h = hasta || null;
+    if (d && h && d > h) return { error: 'La fecha "desde" no puede ser posterior a "hasta"' };
+    return { desde: d, hasta: h };
+};
+
+// Totales de un conjunto de facturas, en centavos exactos: lo pagado, lo que sigue pendiente (incluye lo que está en
+// revisión), lo rechazado y el total de todas.
+const resumenFacturas = (facturas) => {
+    const suma = (estados) => facturas.filter((f) => estados.includes(f.estado)).reduce((total, f) => total + aCentavos(f.total), 0) / 100;
+    return {
+        cantidad: facturas.length,
+        total_facturado: suma(ESTADOS),
+        total_pagado: suma(['Pagada']),
+        total_pendiente: suma(['Pendiente', 'En revision']),
+        total_rechazado: suma(['Rechazada']),
+    };
+};
+
+// Fecha en hora de Argentina de un timestamp de la base (que está en UTC), para filtrar por rangos de fechas en SQL
+const fechaLocalSql = (columna) => `((${columna} AT TIME ZONE 'UTC') AT TIME ZONE 'America/Argentina/Buenos_Aires')::date`;
+const aCentavosFactura = aCentavos;
+
+module.exports = { fechaLocalSql, aCentavosFactura, ESTADOS, TRANSICIONES, MAX_MOTIVO, validarRevision, esFecha, validarRango, resumenFacturas, MAX_ITEMS, ESTADOS_ABIERTOS, NOTA_PAGO, claveItem, validarSeleccion, totalFactura, descripcionCuota, descripcionServicio, azarReferencia, referenciaFactura, datosBancarios };

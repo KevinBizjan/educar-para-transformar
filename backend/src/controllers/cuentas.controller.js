@@ -133,6 +133,8 @@ const armarFactura = (factura, items) => ({
     total: factura.total,
     estado: factura.estado,
     emitida_en: factura.emitida_en,
+    pagada_en: factura.pagada_en || null,
+    motivo_rechazo: factura.motivo_rechazo || null,
     items,
 });
 
@@ -202,7 +204,7 @@ exports.crearFactura = async (req, res) => {
 exports.listarFacturas = async (req, res) => {
     try {
         const facturas = (await db.query(
-            'SELECT id, referencia, total, estado, emitida_en FROM facturas WHERE tutor_id = $1 ORDER BY emitida_en DESC, id DESC', [req.user.id]
+            'SELECT id, referencia, total, estado, emitida_en, pagada_en, motivo_rechazo FROM facturas WHERE tutor_id = $1 ORDER BY emitida_en DESC, id DESC', [req.user.id]
         )).rows;
         const items = facturas.length ? (await db.query(ITEMS_DE_FACTURA, [facturas.map((f) => f.id)])).rows : [];
         res.json({ facturas: facturas.map((f) => armarFactura(f, items.filter((i) => i.factura_id === f.id))) });
@@ -216,7 +218,7 @@ exports.getFactura = async (req, res) => {
     const id = parseInt(req.params.id);
     if (!id) return res.status(400).json({ message: 'Factura inválida' });
     try {
-        const factura = (await db.query('SELECT id, tutor_id, referencia, total, estado, emitida_en FROM facturas WHERE id = $1', [id])).rows[0];
+        const factura = (await db.query('SELECT id, tutor_id, referencia, total, estado, emitida_en, pagada_en, motivo_rechazo FROM facturas WHERE id = $1', [id])).rows[0];
         if (!factura) return res.status(404).json({ message: 'Factura no encontrada' });
         if (factura.tutor_id !== req.user.id) return res.status(403).json({ message: 'No tenés acceso a esta factura' });
         const items = (await db.query(ITEMS_DE_FACTURA, [[id]])).rows;

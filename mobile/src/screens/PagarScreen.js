@@ -141,6 +141,7 @@ export default function PagarScreen() {
                                 <View style={[local.insignia, { backgroundColor: colorFactura(f.estado).fondo }]}>
                                     <Text style={{ color: colorFactura(f.estado).texto, fontWeight: '800', fontSize: 12 }}>{etiquetaFactura(f.estado)}</Text>
                                 </View>
+                                {f.estado === 'Rechazada' && !!f.motivo_rechazo && <Text style={local.motivo}>Motivo del rechazo: {f.motivo_rechazo}</Text>}
                             </View>
                             <Text style={local.monto}>{formatearMonto(f.total)}</Text>
                           </View>
@@ -229,6 +230,7 @@ const local = StyleSheet.create({
     factura: { flexDirection: 'row', alignItems: 'flex-start' },
     referencia: { fontSize: 15, fontWeight: '800', color: colores.texto },
     referenciaGrande: { fontSize: 22, fontWeight: '800', color: colores.texto, letterSpacing: 1, marginBottom: 6 },
+    motivo: { fontSize: 13, color: colores.error, fontWeight: '700', marginTop: 6 },
     insignia: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 4, marginTop: 8 },
     dato: { fontSize: 15, color: colores.texto, fontWeight: '700', marginTop: 4 },
     linea: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 5 },

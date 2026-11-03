@@ -3,8 +3,9 @@ import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, T
 import { formatearMonto } from '../familia/resumen.js';
 import {
     FILTROS, cargarCuotas, obtenerEnCacheCuotas, agruparPorHijo, tituloCuota, etiquetaEstado, colorEstado,
-    describirVencimiento, describirAbonado, describirPago, mensajeVacio, formatearMomento,
+    describirVencimiento, describirAbonado, mensajeVacio,
 } from '../cuentas/cuotas.js';
+import HistorialFacturas from './HistorialFacturas.js';
 import { estilos, colores } from './estilos.js';
 
 // "Cuotas": las cuotas de los hijos con su importe y vencimiento, filtradas por pendientes, pagadas o historial de pagos.
@@ -34,10 +35,10 @@ export default function CuotasScreen() {
         }
     }, []);
 
-    useEffect(() => { cargar(filtro); }, [filtro, cargar]);
+    const esHistorial = filtro === 'historial'; // el historial tiene su propia pantalla (facturas, pagos y PDF)
+    useEffect(() => { if (!esHistorial) cargar(filtro); }, [filtro, esHistorial, cargar]);
 
-    const esHistorial = filtro === 'historial';
-    const lista = datos ? (esHistorial ? datos.pagos : datos.cuotas) : null;
+    const lista = datos && !esHistorial ? datos.cuotas : null;
 
     return (
         <ScrollView
@@ -61,28 +62,23 @@ export default function CuotasScreen() {
                 ))}
             </View>
 
-            {!!error && (
+            {esHistorial && <HistorialFacturas />}
+
+            {!esHistorial && !!error && (
                 <View style={local.aviso}>
                     <Text style={local.avisoTexto}>{error}</Text>
                     <Pressable onPress={() => cargar(filtro)}><Text style={local.reintentar}>Reintentar</Text></Pressable>
                 </View>
             )}
 
-            {cargando && <ActivityIndicator size="large" color={colores.azul} style={{ marginTop: 32 }} />}
+            {!esHistorial && cargando && <ActivityIndicator size="large" color={colores.azul} style={{ marginTop: 32 }} />}
 
-            {datos && !esHistorial && (
+            {lista && (
                 <View style={[estilos.tarjeta, { marginBottom: 14 }]}>
                     <Text style={estilos.etiqueta}>Total pendiente</Text>
                     <Text style={[local.total, { color: datos.hay_deuda ? colores.error : colores.ok }]}>
                         {datos.hay_deuda ? formatearMonto(datos.total_pendiente) : 'Cuenta al día'}
                     </Text>
-                </View>
-            )}
-
-            {datos && esHistorial && datos.pagos.length > 0 && (
-                <View style={[estilos.tarjeta, { marginBottom: 14 }]}>
-                    <Text style={estilos.etiqueta}>Total abonado</Text>
-                    <Text style={[local.total, { color: colores.ok }]}>{formatearMonto(datos.total_pagado)}</Text>
                 </View>
             )}
 
@@ -92,23 +88,13 @@ export default function CuotasScreen() {
                 </View>
             )}
 
-            {lista && !esHistorial && agruparPorHijo(lista).map((grupo) => (
+            {lista && agruparPorHijo(lista).map((grupo) => (
                 <View key={grupo.alumno_id} style={{ marginBottom: 6 }}>
                     <Text style={local.hijo}>{grupo.alumno}</Text>
                     {grupo.cuotas.map((c) => <TarjetaCuota key={c.cuota_id + '-' + c.alumno_id} cuota={c} />)}
                 </View>
             ))}
 
-            {lista && esHistorial && lista.map((p) => (
-                <View key={p.id} style={[estilos.tarjeta, local.fila]}>
-                    <View style={{ flex: 1 }}>
-                        <Text style={local.cuota}>{p.alumno}</Text>
-                        <Text style={local.detalle}>{describirPago(p)}</Text>
-                        <Text style={local.detalle}>{formatearMomento(p.fecha_pago)}</Text>
-                    </View>
-                    <Text style={[local.monto, { color: colores.ok }]}>{formatearMonto(p.monto)}</Text>
-                </View>
-            ))}
         </ScrollView>
     );
 }
