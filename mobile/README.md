@@ -29,7 +29,7 @@ En el emulador de Android la computadora es `http://10.0.2.2:3000`. Después de 
 ## Comprobar sin celular
 
 ```bash
-npm test                   # 63 pruebas: cliente de la API, sesión, validaciones, "Mis hijos", "Cuotas", "Pagar" y comprobantes (sin red)
+npm test                   # 74 pruebas: cliente de la API, sesión, validaciones, "Mis hijos", "Cuotas", "Pagar", comprobantes e historial (sin red)
 npm run verificar:conexion # llama al backend real: GET /api/health
 ```
 
@@ -40,7 +40,7 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 | `App.js` | Raíz de la app: redirige según la sesión y el rol |
 | `src/auth/` | Sesión: login, renovación y cierre (`sesion.js`), contexto de React y almacenamiento seguro del token |
 | `src/familia/` | Lógica de "Mis hijos": carga del resumen, caché en memoria, formato de montos y meses |
-| `src/cuentas/` | Lógica de "Cuotas" (carga por filtro, caché y textos), de "Pagar" (selección, total exacto y factura) y de los comprobantes (validación y subida) |
+| `src/cuentas/` | Lógica de "Cuotas" (carga por filtro, caché y textos), de "Pagar" (selección, total exacto y factura) y de los comprobantes (validación y subida) y del historial (rangos de fechas y PDF) |
 | `src/screens/` | Pantallas: inicio de sesión, "Mis hijos", "Cuotas", "Pagar", "Mi cuenta", cambio de contraseña y acceso no disponible |
 | `src/utils/validators.js` | Reglas de contraseña (las mismas del backend y la web) |
 | `src/config.js` | URL de la API y claves públicas de Supabase (variables `EXPO_PUBLIC_*`) |
@@ -84,7 +84,15 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 - **La app no habla con Storage**: manda el archivo al backend (`POST /api/cuentas/facturas/:id/comprobantes`), que lo guarda en un bucket **privado** de Supabase con la clave secreta del servidor. Así esa clave nunca está en el teléfono y cada archivo queda asociado a una factura. Si falla el guardado en la base, el archivo se retira de Storage.
 - Configuración del servidor: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` y, si hace falta, `SUPABASE_BUCKET` (ver `DEPLOY.md`). `npm run verificar:storage` (en `backend`) comprueba el bucket de verdad: sube, descarga con enlace firmado y borra una imagen de prueba.
 - El cliente `src/lib/supabase.js` y las variables `EXPO_PUBLIC_SUPABASE_*` de la HU2 ya no se usan para esto.
-- **Pendiente:** que un administrador revise los comprobantes y pase la factura a «Pagada» o «Rechazada» (hoy solo se puede por la base de datos).
+- La revisión del comprobante la hace la Dirección desde la web (ver «Historial y revisión», HU9).
+
+## Historial y revisión de facturas (HU9)
+
+- **Historial** (Cuotas → «Historial»): las facturas de un período con su **desglose por ítem**, el estado de cada una y un **resumen** de lo facturado, pagado y pendiente. El período se elige con cuatro opciones rápidas: este mes, 3 meses, este año o todo. Si la Dirección rechazó una factura, se ve el motivo. Los pagos que la institución registró por su cuenta aparecen aparte, sin contarse dos veces con las facturas.
+- **PDF**: «Ver historial en PDF» (todo el período) y «Comprobante en PDF» (cada factura). El visor del teléfono no puede mandar el token de sesión, así que el servidor da un **enlace temporal firmado** (5 minutos): `GET /api/cuentas/pdf-enlace` y `GET /api/cuentas/pdf/:token`. Ese token usa otro secreto: solo abre ese PDF y no sirve como sesión.
+- API: `GET /api/cuentas/historial?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` (los dos extremos son opcionales). Los rangos se entienden en hora de Argentina.
+- **Revisión de la Dirección (web):** pestaña «Facturas» del panel del administrador. Muestra primero las facturas «En revisión», con sus ítems y los comprobantes (enlace temporal para verlos), y permite **dar por pagada** (con confirmación) o **rechazar** con un motivo obligatorio; una factura sin comprobantes solo se puede anular. Al dar por pagada, cada cuota queda registrada como pago atado a la factura y descuenta del saldo de la familia, igual que un pago cargado a mano; pagada y rechazada son estados finales. API (solo administrador): `GET /api/facturas`, `GET /api/facturas/:id`, `GET /api/facturas/comprobantes/:id/url` y `PATCH /api/facturas/:id/estado`.
+- La consulta `GET /api/cuentas/cuotas?estado=historial` (lista de pagos) sigue disponible, pero la app ya no la usa.
 
 ## Notas
 

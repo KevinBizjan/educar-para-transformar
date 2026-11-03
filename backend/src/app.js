@@ -29,6 +29,7 @@ app.use('/api/servicios', require('./routes/servicios.routes'));
 app.use('/api/comunicacion', require('./routes/comunicacion.routes'));
 app.use('/api/inscripciones', require('./routes/inscripciones.routes'));
 app.use('/api/cuentas', require('./routes/cuentas.routes'));
+app.use('/api/facturas', require('./routes/facturasAdmin.routes'));
 app.use('/api/reportes', require('./routes/reportes.routes'));
 app.use('/api/vinculos', require('./routes/vinculos.routes'));
 

@@ -488,3 +488,10 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'No se pudo crear transporte_rutas_nombre_uq: %', SQLERRM;
 END $$;
+
+-- Revisión de las facturas por la Dirección (HU9): quién la revisó, cuándo y por qué se rechazó
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS motivo_rechazo TEXT;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS revisada_por INTEGER REFERENCES users(id);
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS revisada_en TIMESTAMP;
+-- Los pagos que genera la aprobación de una factura quedan atados a ella (así el historial no los cuenta dos veces)
+ALTER TABLE pagos ADD COLUMN IF NOT EXISTS factura_id INTEGER REFERENCES facturas(id);
