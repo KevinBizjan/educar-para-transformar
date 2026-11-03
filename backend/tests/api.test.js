@@ -18,7 +18,8 @@ describe('API Educar para Transformar', { skip }, () => {
     // Días distintos en cada corrida: evita choques si la base ya tiene datos de otra corrida.
     const diasDesde = (anio, tope) => new Date(Date.UTC(anio, 0, 1) + (Date.now() % tope) * 86400000).toISOString().slice(0, 10);
     let seq = 0;
-    const dniUnico = () => String(Date.now()).slice(-7) + String(++seq).padStart(2, '0');
+    // DNI numérico (la API valida el formato) y distinto en cada proceso: los archivos de prueba corren a la vez
+    const dniUnico = () => String(process.pid % 1000).padStart(3, '0') + String(Date.now()).slice(-5) + String(++seq).padStart(2, '0');
 
     // --- Datos de apoyo para crear grupos de deporte y servicios de transporte en las pruebas ---
     // Cada grupo lleva su propio deporte, un día y un horario distintos, para no chocar entre sí.
@@ -1176,9 +1177,9 @@ describe('API Educar para Transformar', { skip }, () => {
             assert.equal((await get('')).status, 200);
         });
 
-        it('el catálogo lista los 9 reportes y las opciones traen lo necesario para los filtros', async () => {
+        it('el catálogo lista los reportes y las opciones traen lo necesario para los filtros', async () => {
             const cat = await get('');
-            assert.equal(cat.data.length, 9);
+            assert.equal(cat.data.length, 13, 'los 9 listados y los 4 reportes de pagos (HU11 y HU12)');
             const op = await get('/opciones');
             assert.equal(op.status, 200);
             for (const clave of ['niveles', 'cursos', 'materias', 'docentes', 'deportes', 'rutas', 'alumnos']) {

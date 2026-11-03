@@ -80,7 +80,8 @@ describe('API de cuotas del padre (HU6)', { skip }, () => {
         return (await res.json()).token;
     };
     let seq = 0;
-    const dni = () => String(Date.now()).slice(-7) + String(++seq).padStart(2, '0');
+    // DNI al azar: los archivos de prueba corren a la vez en procesos distintos y un contador por hora puede chocar
+    const dni = () => 'T' + require('node:crypto').randomBytes(5).toString('hex') + String(++seq);
     const alumno = async (apellido, cursoId) => {
         const id = (await db.query(
             `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, curso_id, tutor_id, estado)

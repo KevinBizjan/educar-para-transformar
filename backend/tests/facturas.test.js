@@ -75,7 +75,8 @@ describe('API de facturas del padre (HU7)', { skip }, () => {
     }
     const login = async (username, password) => (await api('POST', '/api/auth/login', { body: { username, password } })).data.token;
     let seq = 0;
-    const dni = () => String(Date.now()).slice(-7) + String(++seq).padStart(2, '0');
+    // DNI al azar: los archivos de prueba corren a la vez en procesos distintos y un contador por hora puede chocar
+    const dni = () => 'T' + require('node:crypto').randomBytes(5).toString('hex') + String(++seq);
     const alumno = async (apellido, cursoId) => {
         const id = (await db.query(
             `INSERT INTO alumnos (nombre, apellido, dni, fecha_nacimiento, curso_id, tutor_id, estado) VALUES ('Fac', $1, $2, '2015-05-05', $3, $4, 'Activo') RETURNING id`,

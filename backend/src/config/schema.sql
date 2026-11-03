@@ -512,3 +512,9 @@ CREATE TABLE IF NOT EXISTS correos_enviados (
     creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS correos_una_vez_por_periodo ON correos_enviados (tipo, periodo, usuario_id) WHERE estado IN ('Enviado', 'Omitido');
+
+-- Índices para los reportes de pagos (HU11 y HU12): buscan lo pagado de cada cuota y de cada servicio
+CREATE INDEX IF NOT EXISTS pagos_alumno_cuota_idx ON pagos (alumno_id, cuota_id);
+CREATE INDEX IF NOT EXISTS factura_items_inscripcion_idx ON factura_items (inscripcion_id);
+CREATE INDEX IF NOT EXISTS factura_items_alumno_cuota_idx ON factura_items (alumno_id, cuota_id);
+CREATE INDEX IF NOT EXISTS facturas_estado_idx ON facturas (estado);

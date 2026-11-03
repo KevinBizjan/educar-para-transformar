@@ -101,6 +101,21 @@ En el panel del administrador, pestaña **Reportes**, están los 9 listados que 
 * Las listas incluyen solo alumnos activos. Los profesores por materia salen de los **Horarios** cargados en Gestión Académica.
 * API: `GET /api/reportes` (catálogo) y `GET /api/reportes/<reporte>`; con `?formato=csv` se descarga el archivo. Solo el administrador tiene acceso.
 
+### Reportes de pagos (HU11 y HU12)
+
+Además de los 9 listados, la pestaña **Reportes** tiene cuatro reportes de pagos. Salen de las mismas tablas que usa la app (cuotas, pagos, inscripciones y facturas), así que coinciden con lo que las familias hacen desde el teléfono.
+
+| Reporte | Qué muestra | Filtros |
+|---|---|---|
+| **Ingresos por mes** | Lo cobrado en cada mes (por fecha de pago) en cuotas, deportes, transporte y comedor, y lo que falta cobrar del período | Año escolar, mes (o todo el año), nivel |
+| **Pagos por alumno** | Por alumno: lo adeudado, lo pagado y lo que falta. **Completo** si no debe nada, **Incompleto** si falta algo. Eligiendo un alumno se ve el detalle de cada cuota y servicio (pagado, parcial, en revisión o pendiente) | Año escolar, mes, nivel, curso, alumno, estado del pago |
+| **Pagos por deporte** | Por grupo: inscriptos, facturado, pagado y pendiente, ordenado por profesor, horario y nivel, con el total por profesor | Mes, deporte, nivel |
+| **Pagos por recorrido** | Por recorrido: inscriptos del mes, facturado, pagado y pendiente, con el detalle de cada alumno | Mes, recorrido |
+
+* **Cómo se calcula:** lo adeudado son las cuotas ya emitidas (hasta el mes actual) del nivel de cada alumno activo más sus inscripciones activas a servicios; las bajas y los alumnos inactivos no cuentan. Una cuota está paga si hay pagos registrados que la cubren o una factura pagada que la incluye; un servicio, si está en una factura dada por pagada. Una factura **en revisión** todavía cuenta como pendiente.
+* Los montos salen con formato de pesos (`$15.000,00`) y tienen una fila de **TOTAL**. Todos se pueden descargar en CSV.
+* Con 400 alumnos y todo el año (4.800 cuotas) responden en menos de 100 ms en una base local; los índices están en `schema.sql`.
+
 ## 🔗 Cuentas vinculadas y vistas por rol
 
 Una cuenta con rol **docente** o **alumno** se asocia a su legajo para que cada persona vea solo lo suyo. El administrador lo hace en la pestaña **Usuarios y Roles → Vincular cuentas con legajos**: una cuenta por persona y una persona por cuenta.

@@ -83,9 +83,10 @@ describe('Reportes: exportación a CSV', () => {
 });
 
 describe('Reportes: catálogo', () => {
-    it('define los 9 reportes de la Dirección, con id único', () => {
-        assert.equal(CATALOGO.length, 9);
-        assert.equal(new Set(CATALOGO.map((r) => r.id)).size, 9);
+    it('define los 9 listados y los 4 reportes de pagos de la Dirección, con id único', () => {
+        assert.equal(CATALOGO.length, 13);
+        assert.equal(new Set(CATALOGO.map((r) => r.id)).size, 13);
+        assert.deepEqual(CATALOGO.slice(9).map((r) => r.id), ['ingresos', 'pagos-por-alumno', 'pagos-por-deporte', 'pagos-por-recorrido']);
         for (const r of CATALOGO) {
             assert.ok(r.titulo && r.descripcion, `${r.id} sin título o descripción`);
             assert.ok(Array.isArray(r.filtros));
