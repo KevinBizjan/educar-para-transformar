@@ -495,3 +495,20 @@ ALTER TABLE facturas ADD COLUMN IF NOT EXISTS revisada_por INTEGER REFERENCES us
 ALTER TABLE facturas ADD COLUMN IF NOT EXISTS revisada_en TIMESTAMP;
 -- Los pagos que genera la aprobación de una factura quedan atados a ella (así el historial no los cuenta dos veces)
 ALTER TABLE pagos ADD COLUMN IF NOT EXISTS factura_id INTEGER REFERENCES facturas(id);
+
+-- Auditoría de los correos automáticos (HU10): uno por intento de envío. Enviado y Omitido se registran una sola vez por
+-- período y familia (así volver a correr el envío no duplica nada); un Error se puede reintentar.
+CREATE TABLE IF NOT EXISTS correos_enviados (
+    id SERIAL PRIMARY KEY,
+    tipo TEXT NOT NULL CHECK (tipo IN ('factura_fin_de_mes', 'aviso_deuda')),
+    periodo TEXT NOT NULL,
+    usuario_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    destinatario TEXT,
+    asunto TEXT,
+    estado TEXT NOT NULL CHECK (estado IN ('Enviado', 'Error', 'Omitido')),
+    detalle TEXT,
+    proveedor_id TEXT,
+    factura_id INTEGER REFERENCES facturas(id) ON DELETE SET NULL,
+    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS correos_una_vez_por_periodo ON correos_enviados (tipo, periodo, usuario_id) WHERE estado IN ('Enviado', 'Omitido');

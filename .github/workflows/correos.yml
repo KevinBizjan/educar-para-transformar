@@ -1,0 +1,37 @@
+name: Correos automáticos
+
+# Dispara el envío diario de correos a las familias (HU10): la factura de fin de mes y el aviso de deuda del día 20.
+# El servidor decide qué corresponde según la fecha y no repite lo ya enviado, así que llamarlo todos los días es seguro.
+# Se usa un disparador externo porque el plan gratuito de Render duerme el servicio y no sostiene un programador propio.
+#
+# Necesita dos secretos del repositorio (Settings → Secrets and variables → Actions):
+#   APP_URL      dirección del servicio, por ejemplo https://educar-para-transformar-pfeu.onrender.com
+#   CRON_SECRET  el mismo valor que la variable CRON_SECRET del servidor en Render
+# Sin ellos no hace nada (ver DEPLOY.md).
+on:
+  schedule:
+    - cron: '0 13 * * 1-5' # 10:00 de Argentina, de lunes a viernes (GitHub usa hora UTC)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  enviar:
+    name: Disparar el envío diario
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ secrets.APP_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+    steps:
+      - name: Llamar al servidor
+        run: |
+          if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "Faltan los secretos APP_URL y CRON_SECRET: no se envía nada (ver DEPLOY.md)."
+            exit 0
+          fi
+          # Render gratis duerme tras 15 minutos sin tráfico: la primera respuesta puede tardar cerca de 1 minuto.
+          # La respuesta lista a las familias, así que no se imprime; el detalle está en la pestaña «Correos» del panel.
+          curl --fail --silent --show-error --retry 3 --retry-delay 20 --retry-all-errors --max-time 180 \
+            -X POST -H "x-cron-secret: $CRON_SECRET" -o /dev/null -w "Respuesta del servidor: HTTP %{http_code}\n" \
+            "${APP_URL%/}/api/correos/ejecutar"

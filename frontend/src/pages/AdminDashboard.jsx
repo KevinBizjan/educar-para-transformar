@@ -5,6 +5,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import ConfirmModal from '../components/ConfirmModal';
 import ReportesListados from '../components/ReportesListados';
 import FacturasAdmin from '../components/FacturasAdmin';
+import CorreosAdmin from '../components/CorreosAdmin';
 import VinculosCuentas from '../components/VinculosCuentas';
 import CatalogoServicios from '../components/CatalogoServicios';
 import InscripcionesServicios from '../components/InscripcionesServicios';
@@ -937,6 +938,13 @@ const AdminDashboard = () => {
                     🧾 Facturas
                 </button>
                 <button
+                    onClick={() => setActiveTab('correos')}
+                    className={`btn ${activeTab === 'correos' ? 'btn-violet' : 'btn-hero-outline'}`}
+                    style={{ fontSize: '0.8rem', color: activeTab === 'correos' ? 'white' : 'var(--blue)' }}
+                >
+                    ✉️ Correos
+                </button>
+                <button
                     onClick={() => setActiveTab('comunicados')}
                     className={`btn ${activeTab === 'comunicados' ? 'btn-violet' : 'btn-hero-outline'}`}
                     style={{ fontSize: '0.8rem', color: activeTab === 'comunicados' ? 'white' : 'var(--blue)' }}
@@ -1632,6 +1640,8 @@ const AdminDashboard = () => {
             {activeTab === 'reportes' && <ReportesListados />}
 
             {activeTab === 'facturas' && <FacturasAdmin />}
+
+            {activeTab === 'correos' && <CorreosAdmin />}
             {activeTab === 'academico' && academicoSub === 'materias' && (
                 <div style={cardStyle}>
                     <h2 style={{ fontSize: '1.25rem', color: 'var(--blue)', fontWeight: 800, marginBottom: '8px' }}>Materias por Curso</h2>
