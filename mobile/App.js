@@ -11,13 +11,14 @@ import SinAccesoScreen from './src/screens/SinAccesoScreen.js';
 import MisHijosScreen from './src/screens/MisHijosScreen.js';
 import CuotasScreen from './src/screens/CuotasScreen.js';
 import PagarScreen from './src/screens/PagarScreen.js';
+import ServiciosScreen from './src/screens/ServiciosScreen.js';
 import BarraInferior from './src/screens/BarraInferior.js';
 import { colores } from './src/screens/estilos.js';
 
 // Redirección según el estado de la sesión y el rol del usuario.
 function Raiz() {
   const { usuario, cargando } = useAuth();
-  const [seccion, setSeccion] = useState('hijos'); // 'hijos' | 'cuotas' | 'pagar' | 'cuenta'
+  const [seccion, setSeccion] = useState('hijos'); // 'hijos' | 'servicios' | 'cuotas' | 'pagar' | 'cuenta'
   const [verCambioPassword, setVerCambioPassword] = useState(false);
 
   if (cargando) {
@@ -36,6 +37,7 @@ function Raiz() {
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1 }}>
         {seccion === 'hijos' && <MisHijosScreen />}
+        {seccion === 'servicios' && <ServiciosScreen />}
         {seccion === 'cuotas' && <CuotasScreen />}
         {seccion === 'pagar' && <PagarScreen />}
         {seccion === 'cuenta' && <InicioScreen alCambiarPassword={() => setVerCambioPassword(true)} />}

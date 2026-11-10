@@ -513,6 +513,19 @@ CREATE TABLE IF NOT EXISTS correos_enviados (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS correos_una_vez_por_periodo ON correos_enviados (tipo, periodo, usuario_id) WHERE estado IN ('Enviado', 'Omitido');
 
+-- Recuperación de contraseña por correo (app móvil): un código de 6 dígitos de un solo uso por cuenta. Se guarda solo
+-- su huella (HMAC), con vencimiento y un tope de intentos.
+CREATE TABLE IF NOT EXISTS recuperaciones_password (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    huella TEXT NOT NULL,
+    vence_en TIMESTAMP NOT NULL,
+    intentos INTEGER NOT NULL DEFAULT 0 CHECK (intentos >= 0),
+    usado BOOLEAN NOT NULL DEFAULT FALSE,
+    creado_en TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE UNIQUE INDEX IF NOT EXISTS recuperaciones_una_por_cuenta ON recuperaciones_password (user_id);
+
 -- Índices para los reportes de pagos (HU11 y HU12): buscan lo pagado de cada cuota y de cada servicio
 CREATE INDEX IF NOT EXISTS pagos_alumno_cuota_idx ON pagos (alumno_id, cuota_id);
 CREATE INDEX IF NOT EXISTS factura_items_inscripcion_idx ON factura_items (inscripcion_id);

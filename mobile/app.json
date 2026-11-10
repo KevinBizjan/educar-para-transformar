@@ -23,6 +23,12 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c1f2368c-d5f3-4492-b57d-fe07fb745e28"
+      }
+    },
+    "owner": "kevinbiz"
   }
 }

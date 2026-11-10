@@ -2,6 +2,7 @@
 // ni de Expo, para poder probarla con Node.
 import { apiFetch } from '../api/client.js';
 import { API_URL } from '../config.js';
+import { describirTamano } from './comprobantes.js';
 
 export const RANGOS = [
     { id: 'mes', texto: 'Este mes' },
@@ -43,12 +44,31 @@ const consulta = (parametros) => {
     return partes.length ? `?${partes.join('&')}` : '';
 };
 
-export const cargarHistorial = ({ desde, hasta }) => apiFetch(`/api/cuentas/historial${consulta({ desde, hasta })}`);
+// alumnoId es opcional: sin él, el historial de toda la familia; con él, solo las facturas que incluyen a ese hijo
+export const cargarHistorial = ({ desde, hasta, alumnoId }) => apiFetch(`/api/cuentas/historial${consulta({ desde, hasta, alumno_id: alumnoId })}`);
+
+// Los hijos de la cuenta, para elegir de quién ver el historial
+export const cargarHijos = () => apiFetch('/api/academico/mis-hijos');
+
+// Opciones del selector de hijo: "Todos" y uno por hijo. Con un solo hijo no hace falta elegir.
+export const opcionesHijos = (hijos) => (hijos.length < 2 ? [] : [
+    { id: null, texto: 'Todos' },
+    ...hijos.map((h) => ({ id: h.id, texto: h.nombre })),
+]);
+
+// Cuando el historial está acotado a un hijo, la factura muestra su parte del total y, aparte, el total de la factura
+export const totalesDeFactura = (factura) => {
+    const parcial = factura.total_factura !== undefined && factura.total_factura !== factura.total;
+    return { total: factura.total, totalFactura: parcial ? factura.total_factura : null };
+};
+
+// "transferencia.png · 12 KB": el comprobante en una línea
+export const describirComprobanteLinea = (comprobante) => `${comprobante.nombre_archivo} · ${describirTamano(comprobante.tamano_bytes)}`;
 
 // El PDF no se puede abrir con el token de sesión desde el visor del teléfono: el servidor da un enlace temporal firmado.
 // Devuelve la dirección completa lista para abrir.
-export async function enlacePdf({ tipo, id, desde, hasta }) {
-    const datos = await apiFetch(`/api/cuentas/pdf-enlace${consulta({ tipo, id, desde, hasta })}`);
+export async function enlacePdf({ tipo, id, desde, hasta, alumnoId }) {
+    const datos = await apiFetch(`/api/cuentas/pdf-enlace${consulta({ tipo, id, desde, hasta, alumno_id: alumnoId })}`);
     return `${API_URL}${datos.ruta}`;
 }
 
@@ -61,6 +81,8 @@ export const filasResumen = (resumen) => [
 ].filter((f) => f.texto !== 'Rechazado' || f.monto > 0);
 
 // Qué se muestra cuando no hay nada en el rango
-export const mensajeHistorialVacio = ({ desde, hasta }) => (
-    desde || hasta ? 'No hay facturas ni pagos en este período. Probá con un rango más amplio.' : 'Todavía no generaste ninguna factura.'
-);
+export const mensajeHistorialVacio = ({ desde, hasta }, { hijo = '' } = {}) => {
+    const de = hijo ? ` de ${hijo}` : '';
+    if (desde || hasta) return `No hay facturas ni pagos${de} en este período. Probá con un rango más amplio.`;
+    return hijo ? `Todavía no hay facturas de ${hijo}.` : 'Todavía no generaste ninguna factura.';
+};

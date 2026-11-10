@@ -83,7 +83,7 @@ Railway detecta el `package.json` y el `railway.json` de la **raíz** y ejecuta 
 | `PORT` | **No definir**: la plataforma lo inyecta sola | No |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Dirección del proyecto y clave **secreta** de Supabase: sin ellas no se pueden adjuntar comprobantes (HU8) | Para comprobantes |
 | `SUPABASE_BUCKET` | Bucket privado de los comprobantes (por defecto `comprobantes`) | No |
-| `RESEND_API_KEY` | Clave de resend.com para los correos automáticos (HU10) | Para correos |
+| `RESEND_API_KEY` | Clave de resend.com para los correos automáticos (HU10) y los códigos de recuperación de contraseña de la app | Para correos |
 | `MAIL_FROM` | Remitente; con el de prueba solo se entrega a la cuenta dueña de Resend | No |
 | `MAIL_REDIRIGIR_A` | Modo prueba o demostración: todos los correos van a esta casilla | No |
 | `CRON_SECRET` | Texto largo al azar; el mismo valor va como secreto `CRON_SECRET` en GitHub | Para correos |

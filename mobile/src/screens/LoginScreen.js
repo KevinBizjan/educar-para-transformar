@@ -3,6 +3,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollVie
 import { API_URL } from '../config.js';
 import { useAuth } from '../auth/AuthContext.js';
 import { estilos, colores } from './estilos.js';
+import RecuperarPasswordScreen from './RecuperarPasswordScreen.js';
 
 export default function LoginScreen() {
     const { iniciarSesion, aviso } = useAuth();
@@ -10,6 +11,7 @@ export default function LoginScreen() {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [enviando, setEnviando] = useState(false);
+    const [recuperando, setRecuperando] = useState(false);
 
     const entrar = async () => {
         if (!usuario.trim() || !password) {
@@ -25,6 +27,8 @@ export default function LoginScreen() {
             setEnviando(false);
         }
     };
+
+    if (recuperando) return <RecuperarPasswordScreen correoInicial={usuario.trim()} alVolver={() => setRecuperando(false)} />;
 
     return (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -74,6 +78,9 @@ export default function LoginScreen() {
                             Conectando… la primera vez puede tardar hasta 1 minuto.
                         </Text>
                     )}
+                    <Pressable onPress={() => setRecuperando(true)} disabled={enviando} accessibilityRole="button" style={{ marginTop: 16, alignItems: 'center' }}>
+                        <Text style={{ color: colores.azul, fontWeight: '800', fontSize: 14 }}>¿Olvidaste tu contraseña?</Text>
+                    </Pressable>
                 </View>
                 <Text style={estilos.pie}>{API_URL}</Text>
             </ScrollView>

@@ -4,6 +4,7 @@ import { colores } from './estilos.js';
 // Navegación simple entre las secciones de la app del padre/tutor.
 const SECCIONES = [
     { id: 'hijos', texto: 'Mis hijos' },
+    { id: 'servicios', texto: 'Servicios' },
     { id: 'cuotas', texto: 'Cuotas' },
     { id: 'pagar', texto: 'Pagar' },
     { id: 'cuenta', texto: 'Mi cuenta' },
@@ -30,8 +31,8 @@ export default function BarraInferior({ activa, alElegir }) {
 
 const estilosBarra = StyleSheet.create({
     barra: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0' },
-    opcion: { flex: 1, alignItems: 'center', paddingVertical: 14 },
-    texto: { fontSize: 14, fontWeight: '700', color: colores.suave },
+    opcion: { flex: 1, alignItems: 'center', paddingVertical: 14, paddingHorizontal: 2 },
+    texto: { fontSize: 12, fontWeight: '700', color: colores.suave },
     textoActivo: { color: colores.azul },
     linea: { position: 'absolute', top: 0, height: 3, width: '60%', backgroundColor: colores.azul, borderRadius: 2 },
 });

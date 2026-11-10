@@ -45,7 +45,7 @@ Al terminar (la primera vez puede tardar unos minutos en la cola gratuita), EAS 
 ## Comprobar sin celular
 
 ```bash
-npm test                   # 74 pruebas: cliente de la API, sesión, validaciones, "Mis hijos", "Cuotas", "Pagar", comprobantes e historial (sin red)
+npm test                   # 99 pruebas: cliente de la API, sesión, recuperación de contraseña, "Mis hijos", "Servicios", "Cuotas", "Pagar", comprobantes e historial (sin red)
 npm run verificar:conexion # llama al backend real: GET /api/health
 ```
 
@@ -54,10 +54,10 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 | Ruta | Qué hay |
 |---|---|
 | `App.js` | Raíz de la app: redirige según la sesión y el rol |
-| `src/auth/` | Sesión: login, renovación y cierre (`sesion.js`), contexto de React y almacenamiento seguro del token |
-| `src/familia/` | Lógica de "Mis hijos": carga del resumen, caché en memoria, formato de montos y meses |
+| `src/auth/` | Sesión: login, renovación y cierre (`sesion.js`), recuperación de contraseña (`recuperacion.js`), contexto de React y almacenamiento seguro del token |
+| `src/familia/` | Lógica de "Mis hijos" (carga del resumen, caché en memoria, formato de montos y meses) y de "Servicios" (`servicios.js`: catálogo, inscripción y baja) |
 | `src/cuentas/` | Lógica de "Cuotas" (carga por filtro, caché y textos), de "Pagar" (selección, total exacto y factura) y de los comprobantes (validación y subida) y del historial (rangos de fechas y PDF) |
-| `src/screens/` | Pantallas: inicio de sesión, "Mis hijos", "Cuotas", "Pagar", "Mi cuenta", cambio de contraseña y acceso no disponible |
+| `src/screens/` | Pantallas: inicio de sesión, recuperar contraseña, "Mis hijos", "Servicios", "Cuotas", "Pagar", "Mi cuenta", cambio de contraseña y acceso no disponible |
 | `src/utils/validators.js` | Reglas de contraseña (las mismas del backend y la web) |
 | `src/config.js` | URL de la API y claves públicas de Supabase (variables `EXPO_PUBLIC_*`) |
 | `src/api/client.js` | Cliente de la API: token JWT, errores en español, tiempo de espera |
@@ -70,7 +70,7 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 - **Renovación:** mientras la app está abierta, el token se renueva cada 10 minutos y al volver a primer plano (`POST /api/auth/refresh`). Con más de 30 minutos sin abrirla, el servidor lo rechaza y hay que iniciar sesión de nuevo. Una sesión no puede superar las 12 horas.
 - **Por rol:** los padres/tutores entran al inicio; administrador, docente y alumno ven un aviso para usar el portal web.
 - **Cambio de contraseña:** pide la actual y aplica las mismas reglas que el registro web.
-- **Pendiente:** la recuperación de contraseña por correo necesita el motor de correo (HU10).
+- **Recuperar la contraseña (sin sesión):** «¿Olvidaste tu contraseña?» en el inicio de sesión. Se escribe el correo de la cuenta (las familias usan su correo como usuario) y llega un **código de 6 dígitos** que vale 15 minutos; con el código se elige la contraseña nueva. El servidor responde siempre lo mismo exista o no la cuenta, guarda solo la huella del código (no el código), admite 5 intentos por código, un pedido por minuto y cada código se usa una sola vez. API: `POST /api/auth/recuperar` y `POST /api/auth/restablecer`. Necesita el envío de correos configurado (`RESEND_API_KEY`); sin él, la app avisa que no está disponible. Las cuentas demo (`padre`, `admin`...) no tienen correo y no pueden recuperarse así.
 
 ## Mis hijos (HU5)
 
@@ -78,6 +78,12 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 - Se puede navegar entre meses con las flechas; cada mes muestra sus propios servicios.
 - **Una sola llamada** a la API (`GET /api/inscripciones/resumen-familia`) trae todo, sin importar cuántos hijos haya. Lo último que se vio queda en un caché en memoria: la pantalla lo muestra al instante y lo actualiza en segundo plano. Se puede actualizar a mano deslizando hacia abajo.
 - Al cerrar sesión (o si la sesión vence) el caché se borra: no quedan datos de la familia en memoria.
+
+## Servicios: inscribir a los hijos (HU4)
+
+- Pestaña **Servicios**: el padre elige a su hijo y el mes (**este mes** o el **siguiente**) y ve el catálogo de **deportes** (con nivel, día y horario, profesor y precio), **transporte** (recorridos) y **comedor**, con los lugares que quedan. Toca **Inscribir** o **Dar de baja** (con confirmación); lo ya inscripto aparece primero y marcado.
+- Las reglas las controla el servidor y su mensaje se muestra tal cual: máximo de 2 deportes por mes, sin horarios superpuestos, un solo recorrido de transporte por mes (puede cambiar de un mes al otro), cupos y deportes del nivel del hijo. La baja no procede si la inscripción ya figura en una factura.
+- Lo inscripto aparece enseguida en «Mis hijos» y en «Pagar». API: `GET /api/inscripciones/catalogo`, `GET /api/inscripciones/alumno/:id`, `POST /api/inscripciones` y `DELETE /api/inscripciones/:id` (las mismas que usa el portal web).
 
 ## Cuotas (HU6)
 
@@ -104,7 +110,7 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 
 ## Historial y revisión de facturas (HU9)
 
-- **Historial** (Cuotas → «Historial»): las facturas de un período con su **desglose por ítem**, el estado de cada una y un **resumen** de lo facturado, pagado y pendiente. El período se elige con cuatro opciones rápidas: este mes, 3 meses, este año o todo. Si la Dirección rechazó una factura, se ve el motivo. Los pagos que la institución registró por su cuenta aparecen aparte, sin contarse dos veces con las facturas.
+- **Historial** (Cuotas → «Historial»): las facturas de un período, con selector de **hijo** (Todos o uno; el PDF también se acota), con su **desglose por ítem** y los **comprobantes adjuntos** de cada una (se pueden ver con un enlace temporal). Cuando se elige un hijo, cada factura muestra su parte del total y, aparte, el de la factura completa (`GET /api/cuentas/historial?alumno_id=`). Además, el estado de cada una y un **resumen** de lo facturado, pagado y pendiente. El período se elige con cuatro opciones rápidas: este mes, 3 meses, este año o todo. Si la Dirección rechazó una factura, se ve el motivo. Los pagos que la institución registró por su cuenta aparecen aparte, sin contarse dos veces con las facturas.
 - **PDF**: «Ver historial en PDF» (todo el período) y «Comprobante en PDF» (cada factura). El visor del teléfono no puede mandar el token de sesión, así que el servidor da un **enlace temporal firmado** (5 minutos): `GET /api/cuentas/pdf-enlace` y `GET /api/cuentas/pdf/:token`. Ese token usa otro secreto: solo abre ese PDF y no sirve como sesión.
 - API: `GET /api/cuentas/historial?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` (los dos extremos son opcionales). Los rangos se entienden en hora de Argentina.
 - **Revisión de la Dirección (web):** pestaña «Facturas» del panel del administrador. Muestra primero las facturas «En revisión», con sus ítems y los comprobantes (enlace temporal para verlos), y permite **dar por pagada** (con confirmación) o **rechazar** con un motivo obligatorio; una factura sin comprobantes solo se puede anular. Al dar por pagada, cada cuota queda registrada como pago atado a la factura y descuenta del saldo de la familia, igual que un pago cargado a mano; pagada y rechazada son estados finales. API (solo administrador): `GET /api/facturas`, `GET /api/facturas/:id`, `GET /api/facturas/comprobantes/:id/url` y `PATCH /api/facturas/:id/estado`.

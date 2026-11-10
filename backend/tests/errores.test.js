@@ -4,6 +4,8 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { responderErrorInterno } = require('../src/utils/errores');
 const { responderErrorDeBorrado } = require('../src/utils/borrado');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const respuestaFalsa = () => {
     const res = { req: { method: 'DELETE', originalUrl: '/api/academico/alumnos/7' } };
@@ -46,5 +48,20 @@ describe('Errores: respuestas sin detalles internos', () => {
         conLogSilenciado(() => responderErrorDeBorrado(res, Object.assign(new Error('connection terminated'), { code: '57P01' }), 'la cuota'));
         assert.equal(res.codigo, 500);
         assert.deepEqual(res.cuerpo, { message: 'Error en el servidor' });
+    });
+});
+
+describe('Errores: guardia sobre el código', () => {
+    const archivos = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? archivos(path.join(dir, e.name)) : (e.name.endsWith('.js') ? [path.join(dir, e.name)] : [])));
+
+    it('ninguna respuesta 500 devuelve el texto de la excepción (ni como message ni como error)', () => {
+        const culpables = [];
+        for (const archivo of archivos(path.join(__dirname, '../src'))) {
+            fs.readFileSync(archivo, 'utf8').split(String.fromCharCode(10)).forEach((linea, i) => {
+                const filtra = /error:\s*err\.message/.test(linea) || /status\(500\)\.json\(\{[^}]*err\.message/.test(linea);
+                if (filtra) culpables.push(`${path.relative(path.join(__dirname, '..'), archivo)}:${i + 1}`);
+            });
+        }
+        assert.deepEqual(culpables, [], 'usar responderErrorInterno (utils/errores.js)');
     });
 });
