@@ -7,6 +7,9 @@ const API_URL_POR_DEFECTO = 'https://educar-para-transformar-pfeu.onrender.com';
 
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL || API_URL_POR_DEFECTO).replace(/\/+$/, '');
 
+// El portal web (administrador, docente y alumno) lo sirve el mismo servicio que la API
+export const PORTAL_WEB_URL = `${API_URL}/login`;
+
 // Supabase se usa SOLO para Storage (comprobantes de pago, HU8). La autenticación y
 // los datos pasan siempre por la API REST del backend.
 export const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';

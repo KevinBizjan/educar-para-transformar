@@ -1,7 +1,9 @@
 // Pruebas de la lógica del historial (HU9): rangos de fechas, textos y llamadas a la API. Sin red.
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { RANGOS, rangoRapido, describirRango, cargarHistorial, enlacePdf, filasResumen, mensajeHistorialVacio } from '../src/cuentas/historial.js';
+import {
+    RANGOS, rangoRapido, describirRango, cargarHistorial, cargarHijos, enlacePdf, filasResumen, mensajeHistorialVacio, opcionesHijos, totalesDeFactura, describirComprobanteLinea,
+} from '../src/cuentas/historial.js';
 import { setToken } from '../src/api/client.js';
 
 describe('Rangos de fechas del historial', () => {
@@ -54,6 +56,32 @@ describe('Textos del resumen', () => {
         assert.match(mensajeHistorialVacio({ desde: '2026-01-01', hasta: null }), /rango más amplio/);
         assert.match(mensajeHistorialVacio({ desde: null, hasta: null }), /Todavía no generaste/);
     });
+
+    it('el mensaje de vacío nombra al hijo cuando se eligió uno', () => {
+        assert.match(mensajeHistorialVacio({ desde: '2026-01-01', hasta: null }, { hijo: 'Ana' }), /facturas ni pagos de Ana en este período/);
+        assert.equal(mensajeHistorialVacio({ desde: null, hasta: null }, { hijo: 'Ana' }), 'Todavía no hay facturas de Ana.');
+    });
+});
+
+describe('Historial por hijo', () => {
+    it('el selector ofrece Todos y cada hijo, y no aparece con un solo hijo o ninguno', () => {
+        assert.deepEqual(opcionesHijos([{ id: 1, nombre: 'Ana' }, { id: 2, nombre: 'Beto' }]), [
+            { id: null, texto: 'Todos' }, { id: 1, texto: 'Ana' }, { id: 2, texto: 'Beto' },
+        ]);
+        assert.deepEqual(opcionesHijos([{ id: 1, nombre: 'Ana' }]), []);
+        assert.deepEqual(opcionesHijos([]), []);
+    });
+
+    it('al ver a un hijo, la factura muestra su parte y aparte el total de la factura completa', () => {
+        assert.deepEqual(totalesDeFactura({ total: 15000.5, total_factura: 30001 }), { total: 15000.5, totalFactura: 30001 });
+        assert.deepEqual(totalesDeFactura({ total: 30001, total_factura: 30001 }), { total: 30001, totalFactura: null }, 'si es todo, no se repite');
+        assert.deepEqual(totalesDeFactura({ total: 30001 }), { total: 30001, totalFactura: null }, 'sin filtro la respuesta no trae total_factura');
+    });
+
+    it('el comprobante se resume en una línea con su tamaño', () => {
+        assert.equal(describirComprobanteLinea({ nombre_archivo: 'transferencia.png', tamano_bytes: 12 * 1024 }), 'transferencia.png · 12 KB');
+        assert.equal(describirComprobanteLinea({ nombre_archivo: 'a.pdf', tamano_bytes: 300 }), 'a.pdf · 300 B');
+    });
 });
 
 describe('Llamadas a la API del historial', () => {
@@ -77,6 +105,22 @@ describe('Llamadas a la API del historial', () => {
         assert.match(llamadas[1].url, /\/api\/cuentas\/historial$/);
         assert.match(llamadas[2].url, /\/api\/cuentas\/historial\?desde=2026-03-01$/);
         assert.equal(llamadas[0].opciones.headers.Authorization, 'Bearer T1');
+    });
+
+    it('acota el historial y el PDF a un hijo con alumno_id', async () => {
+        simular({ facturas: [], ruta: '/api/cuentas/pdf/x.y.z' });
+        await cargarHistorial({ desde: '2026-03-01', hasta: null, alumnoId: 7 });
+        await cargarHistorial({ desde: null, hasta: null, alumnoId: null });
+        await enlacePdf({ tipo: 'historial', desde: null, hasta: null, alumnoId: 7 });
+        assert.match(llamadas[0].url, /\/api\/cuentas\/historial\?desde=2026-03-01&alumno_id=7$/);
+        assert.match(llamadas[1].url, /\/api\/cuentas\/historial$/, 'sin hijo no se manda alumno_id');
+        assert.match(llamadas[2].url, /pdf-enlace\?tipo=historial&alumno_id=7$/);
+    });
+
+    it('pide los hijos de la cuenta', async () => {
+        simular([{ id: 1, nombre: 'Ana' }]);
+        assert.deepEqual(await cargarHijos(), [{ id: 1, nombre: 'Ana' }]);
+        assert.match(llamadas[0].url, /\/api\/academico\/mis-hijos$/);
     });
 
     it('pide el enlace del PDF y devuelve la dirección completa', async () => {

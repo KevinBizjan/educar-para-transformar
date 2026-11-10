@@ -6,6 +6,8 @@ const { verifyToken } = authMiddleware;
 
 router.post('/registro', authController.registroFamiliar);
 router.post('/login', authController.login);
+router.post('/recuperar', authController.pedirCodigoPassword);
+router.post('/restablecer', authController.restablecerPassword);
 router.get('/me', verifyToken, authController.getMe);
 router.post('/refresh', verifyToken, authController.refresh);
 router.post('/change-password', verifyToken, authController.changePassword);

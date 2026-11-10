@@ -23,8 +23,8 @@ export default function InicioScreen({ alCambiarPassword }) {
                 <Text style={estilos.etiqueta}>Tu cuenta</Text>
                 <Text style={estilos.texto}>Usuario: {usuario.username}</Text>
 
-                <Text style={[estilos.etiqueta, { marginTop: 20 }]}>Próximamente</Text>
-                <Text style={estilos.texto}>Subir los comprobantes de tus transferencias.</Text>
+                <Text style={[estilos.etiqueta, { marginTop: 20 }]}>Qué podés hacer en la app</Text>
+                <Text style={estilos.texto}>Ver a tus hijos y sus servicios, inscribirlos, consultar tus cuotas, pagar por transferencia, subir los comprobantes y revisar el historial.</Text>
 
                 <Pressable style={estilos.botonSecundario} onPress={alCambiarPassword}>
                     <Text style={estilos.botonTextoSecundario}>Cambiar contraseña</Text>

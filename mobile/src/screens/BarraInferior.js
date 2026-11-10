@@ -3,10 +3,11 @@ import { colores } from './estilos.js';
 
 // Navegación simple entre las secciones de la app del padre/tutor.
 const SECCIONES = [
-    { id: 'hijos', texto: 'Mis hijos' },
-    { id: 'cuotas', texto: 'Cuotas' },
-    { id: 'pagar', texto: 'Pagar' },
-    { id: 'cuenta', texto: 'Mi cuenta' },
+    { id: 'hijos', texto: 'Mis hijos', icono: '👨‍👧' },
+    { id: 'servicios', texto: 'Servicios', icono: '⚽' },
+    { id: 'cuotas', texto: 'Cuotas', icono: '🧾' },
+    { id: 'pagar', texto: 'Pagar', icono: '💳' },
+    { id: 'cuenta', texto: 'Mi cuenta', icono: '👤' },
 ];
 
 export default function BarraInferior({ activa, alElegir }) {
@@ -20,6 +21,7 @@ export default function BarraInferior({ activa, alElegir }) {
                     accessibilityRole="tab"
                     accessibilityState={{ selected: activa === s.id }}
                 >
+                    <Text style={[estilosBarra.icono, activa !== s.id && estilosBarra.iconoApagado]}>{s.icono}</Text>
                     <Text style={[estilosBarra.texto, activa === s.id && estilosBarra.textoActivo]}>{s.texto}</Text>
                     {activa === s.id && <View style={estilosBarra.linea} />}
                 </Pressable>
@@ -30,8 +32,10 @@ export default function BarraInferior({ activa, alElegir }) {
 
 const estilosBarra = StyleSheet.create({
     barra: { flexDirection: 'row', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e2e8f0' },
-    opcion: { flex: 1, alignItems: 'center', paddingVertical: 14 },
-    texto: { fontSize: 14, fontWeight: '700', color: colores.suave },
-    textoActivo: { color: colores.azul },
-    linea: { position: 'absolute', top: 0, height: 3, width: '60%', backgroundColor: colores.azul, borderRadius: 2 },
+    opcion: { flex: 1, alignItems: 'center', paddingVertical: 8, paddingHorizontal: 2 },
+    icono: { fontSize: 20 },
+    iconoApagado: { opacity: 0.55 },
+    texto: { fontSize: 12, fontWeight: '700', color: colores.suave },
+    textoActivo: { color: colores.violeta },
+    linea: { position: 'absolute', top: 0, height: 3, width: '60%', backgroundColor: colores.violeta, borderRadius: 2 },
 });

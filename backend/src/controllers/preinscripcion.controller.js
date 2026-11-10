@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { NOMBRE_REGEX, esDniValido, esEmailValido, esEdadValida } = require('../utils/validators');
 
 exports.create = async (req, res) => {
@@ -44,7 +45,7 @@ exports.create = async (req, res) => {
         const result = await db.query(query, [alumno_nombre, alumno_dni, alumno_edad, nivel, turno, tutor_nombre, tutor_telefono, tutor_email, observaciones]);
         res.status(201).json({ message: 'Preinscripción enviada con éxito', id: result.rows[0].id });
     } catch (err) {
-        res.status(500).json({ message: 'Error al registrar la preinscripción', error: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -53,7 +54,7 @@ exports.getAll = async (req, res) => {
         const result = await db.query('SELECT * FROM preinscripciones ORDER BY fecha DESC');
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: 'Error al obtener las preinscripciones', error: err.message });
+        responderErrorInterno(res, err);
     }
 };
 

@@ -7,6 +7,9 @@ require('dotenv').config();
 const { NOMBRE_REGEX, esNombreValido, esEmailValido, validarPassword } = require('../utils/validators');
 const RolFactory = require('../patterns/rolFactory');
 const { responderErrorDeBorrado } = require('../utils/borrado');
+const { esCorreo } = require('../utils/correos');
+const { obtenerProveedor } = require('../services/correo');
+const rec = require('../utils/recuperacion');
 
 const ES_VIOLACION_UNIQUE = (err) => err.code === '23505';
 
@@ -60,7 +63,7 @@ exports.registroFamiliar = async (req, res) => {
         if (ES_VIOLACION_UNIQUE(err)) {
             return res.status(400).json({ message: 'Ya existe una cuenta con ese correo' });
         }
-        res.status(500).json({ message: 'Error al registrar usuario', error: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -87,7 +90,81 @@ exports.login = async (req, res) => {
 
         res.json({ token: firmarToken(user), user: datosPublicos(user) });
     } catch (err) {
-        res.status(500).json({ message: 'Error en el servidor', error: err.message });
+        responderErrorInterno(res, err);
+    }
+};
+
+// --- Recuperación de contraseña por correo (rutas públicas) ---
+// Pedir el código: siempre se responde lo mismo, exista o no la cuenta, para no revelar quién la tiene.
+exports.pedirCodigoPassword = async (req, res) => {
+    const usuario = String(req.body.usuario || '').trim().toLowerCase();
+    if (!usuario) return res.status(400).json({ message: 'Escribí tu correo' });
+    const proveedor = obtenerProveedor();
+    if (!proveedor) return res.status(503).json({ message: 'La recuperación por correo no está disponible por ahora. Pedí el cambio a la institución.' });
+
+    try {
+        // Solo las cuentas cuyo usuario es un correo (las familias) pueden recibir el código
+        const user = esCorreo(usuario) ? (await db.query('SELECT id, nombre, username FROM users WHERE username = $1', [usuario])).rows[0] : null;
+        if (user) {
+            const previo = (await db.query('SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - creado_en))::float AS segundos FROM recuperaciones_password WHERE user_id = $1', [user.id])).rows[0];
+            if (!previo || !rec.debeEsperar(previo.segundos)) {
+                const codigo = rec.crearCodigo();
+                const huella = rec.huellaDeCodigo(user.id, codigo, process.env.JWT_SECRET);
+                await db.query(
+                    `INSERT INTO recuperaciones_password (user_id, huella, vence_en, intentos, usado, creado_en)
+                     VALUES ($1, $2, CURRENT_TIMESTAMP + ($3 || ' minutes')::interval, 0, FALSE, CURRENT_TIMESTAMP)
+                     ON CONFLICT (user_id) DO UPDATE SET huella = EXCLUDED.huella, vence_en = EXCLUDED.vence_en, intentos = 0, usado = FALSE, creado_en = CURRENT_TIMESTAMP`,
+                    [user.id, huella, String(rec.MINUTOS_VIGENCIA)]
+                );
+                const correo = rec.armarCorreoCodigo({ nombre: user.nombre, codigo });
+                try {
+                    await proveedor.enviar({ para: user.username, asunto: correo.asunto, html: correo.html, texto: correo.texto });
+                } catch (err) {
+                    // El usuario no debe enterarse (se revelaría que la cuenta existe); queda en el log del servidor
+                    console.error('No se pudo enviar el código de recuperación:', err.message);
+                }
+            }
+        }
+        res.json({ message: rec.MENSAJE_PEDIDO });
+    } catch (err) {
+        responderErrorInterno(res, err);
+    }
+};
+
+// Cambiar la contraseña con el código. Todo en una transacción: el código se consume una sola vez.
+exports.restablecerPassword = async (req, res) => {
+    const usuario = String(req.body.usuario || '').trim().toLowerCase();
+    const codigo = String(req.body.codigo || '').trim();
+    const password = req.body.password || '';
+    if (!usuario || !codigo || !password) return res.status(400).json({ message: 'Correo, código y contraseña nueva son obligatorios' });
+    if (!rec.formatoDeCodigo(codigo)) return res.status(400).json({ message: `El código tiene ${rec.LARGO_CODIGO} dígitos` });
+    const errorPassword = validarPassword(password);
+    if (errorPassword) return res.status(400).json({ message: errorPassword });
+
+    let cliente;
+    try {
+        cliente = await db.getClient();
+        await cliente.query('BEGIN');
+        const user = (await cliente.query('SELECT id FROM users WHERE username = $1', [usuario])).rows[0];
+        const guardado = user ? (await cliente.query('SELECT id, huella, (vence_en <= CURRENT_TIMESTAMP) AS vencido, intentos, usado FROM recuperaciones_password WHERE user_id = $1 FOR UPDATE', [user.id])).rows[0] : null;
+        if (!guardado || rec.estadoDeCodigo(guardado) !== 'vigente') {
+            await cliente.query('ROLLBACK');
+            return res.status(400).json({ message: rec.MENSAJE_CODIGO_INVALIDO });
+        }
+        if (!rec.huellasIguales(guardado.huella, rec.huellaDeCodigo(user.id, codigo, process.env.JWT_SECRET))) {
+            await cliente.query('UPDATE recuperaciones_password SET intentos = intentos + 1 WHERE id = $1', [guardado.id]);
+            await cliente.query('COMMIT'); // el intento fallido se cuenta aunque no se cambie nada
+            return res.status(400).json({ message: rec.MENSAJE_CODIGO_INVALIDO });
+        }
+        await cliente.query('UPDATE users SET password = $2 WHERE id = $1', [user.id, await bcrypt.hash(password, 10)]);
+        await cliente.query('UPDATE recuperaciones_password SET usado = TRUE WHERE id = $1', [guardado.id]);
+        await cliente.query('COMMIT');
+        res.json({ message: 'Contraseña actualizada. Ya podés iniciar sesión.' });
+    } catch (err) {
+        if (cliente) await cliente.query('ROLLBACK').catch(() => {});
+        responderErrorInterno(res, err);
+    } finally {
+        if (cliente) cliente.release();
     }
 };
 
@@ -208,7 +285,7 @@ exports.createUser = async (req, res) => {
         if (ES_VIOLACION_UNIQUE(err)) {
             return res.status(400).json({ message: 'Ya existe un usuario con ese nombre de usuario/correo' });
         }
-        res.status(500).json({ message: 'Error al crear usuario', error: err.message });
+        responderErrorInterno(res, err);
     }
 };
 

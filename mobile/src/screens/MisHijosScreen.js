@@ -5,7 +5,7 @@ import {
     cargarResumen, obtenerEnCache, periodoActual, mesAnterior, mesSiguiente, tituloPeriodo,
     formatearMonto, describirCurso, describirComedor, nombreServicio,
 } from '../familia/resumen.js';
-import { estilos, colores } from './estilos.js';
+import { estilos, colores, colorDeTipo } from './estilos.js';
 
 // "Mis hijos": los hijos del padre autenticado, sus servicios del mes, el consumo del comedor
 // y el estado de cuenta. Una sola llamada a la API; lo último que se vio queda en caché para
@@ -111,6 +111,7 @@ function TarjetaHijo({ hijo }) {
             {hijo.servicios.length === 0 && <Text style={local.vacio}>Sin servicios inscriptos este mes.</Text>}
             {hijo.servicios.map((s) => (
                 <View key={s.id} style={local.servicio}>
+                    <View style={[local.punto, { backgroundColor: colorDeTipo(s.tipo) }]} />
                     <Text style={[estilos.texto, { flex: 1 }]}>{nombreServicio(s)}</Text>
                     <Text style={local.precio}>{formatearMonto(s.precio_mensual)}</Text>
                 </View>
@@ -133,11 +134,12 @@ const local = StyleSheet.create({
     avisoTexto: { color: colores.error, fontWeight: '700' },
     reintentar: { color: colores.azul, fontWeight: '800', marginTop: 6 },
     dato: { fontSize: 15, color: colores.texto, fontWeight: '700', marginTop: 4 },
-    nombre: { fontSize: 19, fontWeight: '800', color: colores.texto },
+    nombre: { fontSize: 19, fontWeight: '800', color: colores.azul },
     curso: { fontSize: 13, color: colores.suave, marginBottom: 10 },
     insignia: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 5, marginBottom: 6 },
     vacio: { fontSize: 14, color: colores.suave },
     servicio: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4 },
+    punto: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
     precio: { fontSize: 14, fontWeight: '700', color: colores.texto },
     total: { fontSize: 14, fontWeight: '800', color: colores.azul, marginTop: 6, textAlign: 'right' },
     comedor: { fontSize: 13, color: colores.suave, marginTop: 10 },
