@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 
 exports.getEstadisticasGenerales = async (req, res) => {
     try {
@@ -16,7 +17,7 @@ exports.getEstadisticasGenerales = async (req, res) => {
             total_docentes: docentesRes.rows[0].count
         });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -38,7 +39,7 @@ exports.getReporteAcademico = async (req, res) => {
         const result = await db.query(query);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -57,6 +58,6 @@ exports.getReporteFinanciero = async (req, res) => {
         const result = await db.query(query);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };

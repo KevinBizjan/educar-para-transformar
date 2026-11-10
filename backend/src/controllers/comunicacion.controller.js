@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { comunicados } = require('../patterns/comunicadosObserver');
 
 // --- NOTIFICACIONES ---
@@ -11,7 +12,7 @@ exports.getNotificaciones = async (req, res) => {
         );
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -39,7 +40,7 @@ exports.crearNotificacion = async (req, res) => {
         comunicados.notificar({ id, titulo, mensaje, rol_destino });
         res.status(201).json({ id });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -49,6 +50,6 @@ exports.getActividadesExtra = async (req, res) => {
         const result = await db.query('SELECT * FROM actividades_extra');
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };

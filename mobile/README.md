@@ -26,6 +26,22 @@ EXPO_PUBLIC_API_URL=http://192.168.0.10:3000
 
 En el emulador de Android la computadora es `http://10.0.2.2:3000`. Después de cambiar `.env`, reiniciá con `npx expo start -c`.
 
+## Instalar en un celular Android (APK)
+
+Para probar la app sin Expo Go ni computadora se genera un instalador `.apk` con EAS Build (el perfil `preview` de `eas.json`). Hace falta una cuenta gratuita de [expo.dev](https://expo.dev).
+
+```bash
+cd mobile
+npx eas-cli login                         # una sola vez, con la cuenta de Expo
+npx eas-cli init                          # una sola vez: vincula la app con el proyecto de Expo
+npx eas-cli build -p android --profile preview
+```
+
+Al terminar (la primera vez puede tardar unos minutos en la cola gratuita), EAS muestra un **enlace y un código QR de descarga**. Se abre desde el celular, se descarga el `.apk` y se instala (Android pide permitir la instalación desde el navegador). La app usa el backend publicado en Render, así que no necesita nada más.
+
+- Antes de una demostración, abrir una vez la URL del servicio en Render: el plan gratuito lo duerme y la primera respuesta tarda hasta 1 minuto.
+- Para iPhone no hay instalador sin una cuenta de Apple de pago: se usa Expo Go (ver arriba).
+
 ## Comprobar sin celular
 
 ```bash

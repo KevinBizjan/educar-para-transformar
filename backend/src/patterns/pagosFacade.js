@@ -73,7 +73,8 @@ const PagosFacade = {
             const result = await db.query(CONSULTA_COMPROBANTE, [pagoId]);
             pago = result.rows[0];
         } catch (err) {
-            return { ok: false, status: 500, message: err.message };
+            console.error('Error al buscar el pago para el comprobante:', err);
+            return { ok: false, status: 500, message: 'Error en el servidor' };
         }
 
         if (!pago) return { ok: false, status: 404, message: 'Pago no encontrado' };

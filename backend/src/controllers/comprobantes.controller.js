@@ -2,6 +2,7 @@
 // que se guardan en Supabase Storage. Al adjuntar el primero, la factura pasa a "En revision".
 const crypto = require('crypto');
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 const { ReglaError } = require('../utils/inscripciones');
 const { MAX_POR_FACTURA, validarArchivo, rutaStorage } = require('../utils/comprobantes');
 const { AlmacenError, obtenerAlmacen } = require('../services/almacenamiento');
@@ -12,7 +13,7 @@ const SEGUNDOS_ENLACE = 600;
 const responderError = (res, err) => {
     if (err instanceof ReglaError) return res.status(err.estado).json({ message: err.message });
     if (err instanceof AlmacenError) return res.status(502).json({ message: 'No se pudo completar la operación con el almacenamiento. Reintentá en unos segundos.' });
-    res.status(500).json({ message: err.message });
+    responderErrorInterno(res, err);
 };
 
 const almacenOError = () => {

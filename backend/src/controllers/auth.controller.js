@@ -1,10 +1,12 @@
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const db = require('../config/database');
+const { responderErrorInterno } = require('../utils/errores');
 require('dotenv').config();
 
 const { NOMBRE_REGEX, esNombreValido, esEmailValido, validarPassword } = require('../utils/validators');
 const RolFactory = require('../patterns/rolFactory');
+const { responderErrorDeBorrado } = require('../utils/borrado');
 
 const ES_VIOLACION_UNIQUE = (err) => err.code === '23505';
 
@@ -160,7 +162,7 @@ exports.getPadres = async (req, res) => {
         const result = await db.query(`SELECT id, nombre, username FROM users WHERE rol = 'padre' ORDER BY nombre`);
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -170,7 +172,7 @@ exports.getUsers = async (req, res) => {
         const result = await db.query('SELECT id, username, nombre, rol, created_at FROM users ORDER BY rol, nombre');
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -226,7 +228,7 @@ exports.updateUserRol = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: 'Usuario no encontrado' });
         res.json({ message: 'Rol actualizado correctamente' });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorInterno(res, err);
     }
 };
 
@@ -240,6 +242,6 @@ exports.deleteUser = async (req, res) => {
         if (result.rowCount === 0) return res.status(404).json({ message: 'Usuario no encontrado' });
         res.json({ message: 'Usuario eliminado correctamente' });
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        responderErrorDeBorrado(res, err, 'la cuenta');
     }
 };
