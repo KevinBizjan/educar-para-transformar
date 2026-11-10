@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { validarPedido, validarRestablecer, normalizarCodigo, pedirCodigo, restablecerPassword, LARGO_CODIGO } from '../auth/recuperacion.js';
 import { estilos, colores } from './estilos.js';
+import { Logo, FondoDegradado } from './Marca.js';
 
 // Recuperar la contraseña (sin sesión): 1) se pide el código con el correo de la cuenta, 2) se escribe el código que
 // llegó por correo junto con la contraseña nueva. Al terminar se vuelve al inicio de sesión.
@@ -48,10 +49,12 @@ export default function RecuperarPasswordScreen({ correoInicial = '', alVolver }
     };
 
     return (
+        <FondoDegradado>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <ScrollView contentContainerStyle={estilos.pantalla} keyboardShouldPersistTaps="handled">
-                <Text style={estilos.titulo}>Recuperar contraseña</Text>
-                <Text style={estilos.subtitulo}>
+            <ScrollView contentContainerStyle={[estilos.pantalla, { backgroundColor: 'transparent' }]} keyboardShouldPersistTaps="handled">
+                <View style={{ alignItems: 'center', marginBottom: 10 }}><View style={estilos.medallon}><Logo ancho={100} /></View></View>
+                <Text style={[estilos.titulo, { color: '#fff' }]}>Recuperar contraseña</Text>
+                <Text style={[estilos.subtitulo, { color: '#e0e7ff' }]}>
                     {paso === 1 && 'Te enviamos un código por correo'}
                     {paso === 2 && 'Escribí el código y tu contraseña nueva'}
                     {paso === 3 && '¡Listo!'}
@@ -124,10 +127,11 @@ export default function RecuperarPasswordScreen({ correoInicial = '', alVolver }
 
                 {paso !== 3 && (
                     <Pressable onPress={alVolver} accessibilityRole="button" style={{ marginTop: 18, alignItems: 'center' }}>
-                        <Text style={{ color: colores.azul, fontWeight: '800', fontSize: 14 }}>Volver al inicio de sesión</Text>
+                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>Volver al inicio de sesión</Text>
                     </Pressable>
                 )}
             </ScrollView>
         </KeyboardAvoidingView>
+        </FondoDegradado>
     );
 }

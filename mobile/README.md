@@ -45,7 +45,7 @@ Al terminar (la primera vez puede tardar unos minutos en la cola gratuita), EAS 
 ## Comprobar sin celular
 
 ```bash
-npm test                   # 99 pruebas: cliente de la API, sesión, recuperación de contraseña, "Mis hijos", "Servicios", "Cuotas", "Pagar", comprobantes e historial (sin red)
+npm test                   # 101 pruebas: cliente de la API, sesión, recuperación de contraseña, "Mis hijos", "Servicios", "Cuotas", "Pagar", comprobantes e historial (sin red)
 npm run verificar:conexion # llama al backend real: GET /api/health
 ```
 
@@ -62,6 +62,12 @@ npm run verificar:conexion # llama al backend real: GET /api/health
 | `src/config.js` | URL de la API y claves públicas de Supabase (variables `EXPO_PUBLIC_*`) |
 | `src/api/client.js` | Cliente de la API: token JWT, errores en español, tiempo de espera |
 | `src/lib/supabase.js` | Cliente de Supabase, solo Storage |
+
+## Identidad visual
+
+- La app usa el **logo y la paleta de la web**: azul `#1a5fa8`, violeta `#7c3aed`, verde `#2da84a` y naranja `#f5820d`. El inicio de sesión lleva el mismo degradé azul a violeta de la web, con el logo sobre un medallón blanco; las secciones tienen una barra superior con el degradé y una línea verde y naranja, y la barra inferior lleva un ícono por sección. En «Mis hijos» y «Servicios», cada tipo tiene su color: deportes en verde, transporte en naranja y comedor en violeta.
+- El ícono de la app y el de Android (adaptativo) son el logo de la institución (`assets/`). El degradé usa `expo-linear-gradient`.
+- En el inicio de sesión, «¿Sos docente, alumno o administrador?» lleva al **portal web** (`<API_URL>/login`); los roles que no son familia también ven ese botón al ingresar.
 
 ## Sesión y roles (HU3)
 

@@ -13,6 +13,7 @@ import CuotasScreen from './src/screens/CuotasScreen.js';
 import PagarScreen from './src/screens/PagarScreen.js';
 import ServiciosScreen from './src/screens/ServiciosScreen.js';
 import BarraInferior from './src/screens/BarraInferior.js';
+import { Encabezado } from './src/screens/Marca.js';
 import { colores } from './src/screens/estilos.js';
 
 // Redirección según el estado de la sesión y el rol del usuario.
@@ -35,6 +36,7 @@ function Raiz() {
 
   return (
     <View style={{ flex: 1 }}>
+      <Encabezado />
       <View style={{ flex: 1 }}>
         {seccion === 'hijos' && <MisHijosScreen />}
         {seccion === 'servicios' && <ServiciosScreen />}

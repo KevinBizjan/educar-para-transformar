@@ -5,7 +5,7 @@ import {
     PERIODOS, periodoElegido, tituloPeriodo, agruparCatalogo, tituloServicio, detalleServicio, describirCupo, inscripcionDe, accionDe, ordenarServicios,
     cargarCatalogo, cargarInscripciones, inscribir, darDeBaja,
 } from '../familia/servicios.js';
-import { estilos, colores } from './estilos.js';
+import { estilos, colores, colorDeTipo } from './estilos.js';
 
 // "Servicios": el padre inscribe a cada hijo en deportes, transporte y comedor del mes (o del siguiente) y puede darlos
 // de baja. Las reglas (máximo de 2 deportes, un recorrido por mes, cupos y horarios) las controla el servidor y su
@@ -122,12 +122,12 @@ export default function ServiciosScreen() {
 
             {!cargando && grupos.map((g) => (
                 <View key={g.tipo} style={{ marginBottom: 6 }}>
-                    <Text style={local.seccion}>{g.titulo}</Text>
+                    <Text style={[local.seccion, { color: colorDeTipo(g.tipo) }]}>{g.titulo}</Text>
                     {ordenarServicios(g.servicios, inscripciones).map((s) => {
                         const accion = accionDe(s, inscripciones);
                         const ocupado = trabajando === s.id;
                         return (
-                            <View key={s.id} style={[estilos.tarjeta, local.servicio, accion === 'baja' && local.inscripto]}>
+                            <View key={s.id} style={[estilos.tarjeta, local.servicio, { borderTopColor: colorDeTipo(s.tipo) }, accion === 'baja' && local.inscripto]}>
                                 <View style={{ flex: 1 }}>
                                     <Text style={local.nombre}>{tituloServicio(s)}</Text>
                                     {detalleServicio(s).map((linea) => <Text key={linea} style={local.detalle}>{linea}</Text>)}
