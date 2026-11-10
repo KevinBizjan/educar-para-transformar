@@ -138,13 +138,21 @@ jobs:
           npm ci --no-audit --no-fund
           node seed.js
 
-      # Instala Cypress (con su caché), arranca el servidor, espera a /api/health y corre todas las pruebas.
+      # El servidor queda corriendo en segundo plano y se espera a que /api/health responda (hasta 60 s).
+      - name: Arrancar la aplicación
+        run: |
+          nohup npm start --prefix backend > servidor.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fs http://127.0.0.1:3917/api/health >/dev/null && echo "La aplicación respondió a los ${i} s" && exit 0
+            sleep 1
+          done
+          echo "La aplicación no respondió. Log del servidor:"
+          cat servidor.log
+          exit 1
+
+      # Instala Cypress (con su caché) y corre todas las pruebas contra la aplicación que ya está arriba.
       - name: Pruebas E2E
         uses: cypress-io/github-action@v6
-        with:
-          start: npm start --prefix backend
-          wait-on: http://localhost:3917/api/health
-          wait-on-timeout: 90
 
       - name: Guardar las capturas si algo falló
         if: failure()

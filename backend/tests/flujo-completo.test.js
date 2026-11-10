@@ -26,6 +26,7 @@ describe('Flujo completo: inscripción → factura → pago → reporte (HU13)',
     let server, base, db, tokenAdmin, tokenPadre, padre, almacen;
     const unico = Date.now();
     const azar = () => crypto.randomBytes(5).toString('hex');
+    const claveFamilia = `Aa1!${crypto.randomBytes(8).toString('hex')}`;
     const ids = { alumnos: [], cuotas: [], cursos: [], niveles: [], personal: [], actividades: [], servicios: [], rutas: [], padres: [] };
     const F = {};
     const [anio, mes] = hoyEnArgentina().split('-').map(Number);
@@ -81,11 +82,11 @@ describe('Flujo completo: inscripción → factura → pago → reporte (HU13)',
         tokenAdmin = await login('admin', 'admin123');
 
         // La Dirección da de alta a la familia (cuenta de padre) y arma dos niveles con su curso y su cuota del mes
-        const r = await admin('POST', '/api/auth/users', { nombre: 'Familia Flujo', username: `hu13-${unico}`, password: 'Flujo123!', rol: 'padre' });
+        const r = await admin('POST', '/api/auth/users', { nombre: 'Familia Flujo', username: `hu13-${unico}`, password: claveFamilia, rol: 'padre' });
         assert.equal(r.status, 201);
         padre = { id: r.data.id };
         ids.padres.push(padre.id);
-        tokenPadre = await login(`hu13-${unico}`, 'Flujo123!');
+        tokenPadre = await login(`hu13-${unico}`, claveFamilia);
 
         for (const clave of ['n1', 'n2']) {
             const nivel = (await db.query('INSERT INTO niveles (nombre) VALUES ($1) RETURNING id', [`Nivel HU13 ${clave} ${unico}`])).rows[0].id;
@@ -321,6 +322,7 @@ describe('Casos de borde entre módulos (HU13)', { skip }, () => {
     let server, base, db, tokenAdmin, tokenPadre, padre;
     const unico = Date.now();
     const azar = () => crypto.randomBytes(5).toString('hex');
+    const claveFamilia = `Aa1!${crypto.randomBytes(8).toString('hex')}`;
     const ids = { alumnos: [], cuotas: [], cursos: [], niveles: [], padres: [] };
     const F = {};
     let almacen;
@@ -364,11 +366,11 @@ describe('Casos de borde entre módulos (HU13)', { skip }, () => {
         server = app.listen(0);
         base = `http://127.0.0.1:${server.address().port}`;
         tokenAdmin = await login('admin', 'admin123');
-        const r = await admin('POST', '/api/auth/users', { nombre: 'Familia Borde', username: `hu13b-${unico}`, password: 'Borde123!', rol: 'padre' });
+        const r = await admin('POST', '/api/auth/users', { nombre: 'Familia Borde', username: `hu13b-${unico}`, password: claveFamilia, rol: 'padre' });
         assert.equal(r.status, 201);
         padre = { id: r.data.id };
         ids.padres.push(padre.id);
-        tokenPadre = await login(`hu13b-${unico}`, 'Borde123!');
+        tokenPadre = await login(`hu13b-${unico}`, claveFamilia);
         F.nivel = (await db.query('INSERT INTO niveles (nombre) VALUES ($1) RETURNING id', [`Nivel borde ${unico}`])).rows[0].id;
         F.curso = (await db.query('INSERT INTO cursos (nivel_id, division, cupo) VALUES ($1, $2, 10) RETURNING id', [F.nivel, 'A'])).rows[0].id;
         ids.niveles.push(F.nivel);

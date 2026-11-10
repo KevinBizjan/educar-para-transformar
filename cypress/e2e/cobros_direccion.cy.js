@@ -10,7 +10,8 @@ const ANIO = hoy.getFullYear();
 const sufijo = String(Date.now()).split('').map((d) => String.fromCharCode(97 + Number(d))).join('');
 const NIVEL = `Nivel Cobros ${sufijo}`;
 const USUARIO = `e2e-cobros-${Date.now()}`;
-const CLAVE = 'CobrosE2e123!';
+// Clave al azar en cada corrida (cumple las reglas: mayúscula, minúscula, número y símbolo)
+const CLAVE = `Aa1!${Math.random().toString(36).slice(2)}${Date.now()}`;
 const CUOTA = 15000.5;
 // La pantalla de facturas formatea en el navegador; los reportes vienen ya formateados del servidor ($15.000,50)
 // (el navegador separa el signo del número con un espacio duro: el patrón acepta cualquier espacio)
